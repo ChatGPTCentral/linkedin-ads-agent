@@ -103,8 +103,8 @@ export const AUDIENCES: LinkedInAudience[] = [
       "AI skills/interests are very broad on LinkedIn, so this should clear minimums comfortably — keep the skill+seniority AND-combination to avoid junk reach.",
     budgetGuidance: "Primary always-on audience. Start here with ~50–60% of test budget.",
     warnings: [
-      "Exclude India & Brazil from this high-CPM campaign (lowest LTV: $24 / $32).",
-      "Low-ticket product (~$47 avg LTV) on a high-CPM platform — watch CPA closely.",
+      "Exclude India & Brazil from this high-CPM campaign (lowest-LTV markets).",
+      "Low-ticket product on a high-CPM platform — watch CPA closely.",
     ],
     derivedFrom: [
       "Geo: US 53% + UK/CA/AU lead converters",
@@ -131,12 +131,12 @@ export const AUDIENCES: LinkedInAudience[] = [
     budgetGuidance: "~25–30% of budget. Point this audience at the lifetime/yearly offer for the best economics.",
     warnings: [
       "May approach the 300-member floor once filtered — monitor 'audience too narrow' warnings.",
-      "Finance/Fintech buyers show the highest LTV ($78) but are a small sample — treat as a hypothesis to test.",
+      "Finance/Fintech buyers show the highest LTV but are a small sample — treat as a hypothesis to test.",
     ],
     derivedFrom: [
-      "High-LTV geos: Switzerland $60, Israel $62, Portugal $66, US $49",
+      "Premium-LTV geos: Switzerland, Israel, Portugal, US",
       "Seniority: Founder + C-Suite a third of job-level reporters",
-      "Managers show highest converter LTV ($58)",
+      "Managers show the highest converter LTV",
     ],
   },
   {
@@ -185,7 +185,7 @@ export const AD_COPY: AdCopyVariant[] = [
       "Better prompts, better output. Steal our prompt packs for marketing, coding and ops — copy-paste prompts that actually get results.",
     headline: "Prompt packs that get results",
     cta: "Download",
-    rationale: "Prompt-engineering goal carries the highest LTV ($66) of any segment.",
+    rationale: "Prompt-engineering goal carries the highest LTV of any segment.",
   },
   {
     id: "team-upskill",
@@ -195,7 +195,7 @@ export const AD_COPY: AdCopyVariant[] = [
       "Get your team fluent in AI — fast. One subscription, tutorials, tool comparisons and ready-to-use workflows your whole team can apply today.",
     headline: "Upskill your team on AI",
     cta: "Sign up",
-    rationale: '"Train my team on AI" converts at 12.9%; managers show the highest LTV ($58).',
+    rationale: '"Train my team on AI" converts at 12.9%; managers show the highest LTV.',
   },
   {
     id: "lifetime",
@@ -282,7 +282,7 @@ export const LANDING_PAGE: LandingPageBrief = {
     "Lead with the goals that convert best: building workflows and training teams.",
   ],
   pricingFraming:
-    "Average LTV is ~$47, so protect CPA: push the higher-value yearly and lifetime offers in premium markets, and use the $4.99 trial as the low-friction entry from broad audiences.",
+    "Average order value is low, so protect CPA: push the higher-value yearly and lifetime offers in premium markets, and use the low-cost trial as the low-friction entry from broad audiences.",
   measurement: [
     "Install the LinkedIn Insight Tag on the landing page for conversion tracking + retargeting.",
     "Track: landing-page view, trial start, purchase, and value — split by audience and UTM.",

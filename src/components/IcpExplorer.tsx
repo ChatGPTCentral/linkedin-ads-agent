@@ -17,15 +17,15 @@ const DIMENSIONS = [
 type DimKey = (typeof DIMENSIONS)[number]["key"];
 
 const INSIGHTS: Record<DimKey, string> = {
-  geo: "The US is 53% of converters. High-LTV markets (Switzerland $60, Israel $62, Portugal $66) punch above their weight; India ($24) and Brazil ($32) are high-volume but low-value — exclude them from high-CPM campaigns.",
-  seniority: "Individual contributors lead by count, but founders + C-suite are a third of those reporting a level — and managers convert at the highest LTV ($58).",
+  geo: "The US is 53% of converters. Premium markets (Switzerland, Israel, Portugal) punch above their weight on value; India and Brazil are high-volume but low-value — exclude them from high-CPM campaigns.",
+  seniority: "Individual contributors lead by count, but founders + C-suite are a third of those reporting a level — and managers convert at the highest LTV.",
   goals: "“Develop AI products/workflows” is the biggest, best-converting goal; “Train my team on AI” also converts strongly; “Prompt engineering” drives the highest LTV.",
   industry: "Directional only (small sample): agencies/consulting lead; Finance/Fintech shows the highest LTV.",
   contentPrefs: "Broad appetite — but how-to tutorials, prompt packs and tool comparisons recur most. Great fuel for creative and lead magnets.",
   personaMix: "Pipeline classification skews to decision-makers, then makers and operators — matching the three personas.",
 };
 
-export function IcpExplorer({ icp }: { icp: IcpDistributions }) {
+export function IcpExplorer({ icp, safe }: { icp: IcpDistributions; safe: boolean }) {
   const [dim, setDim] = useState<DimKey>("geo");
   const [byLtv, setByLtv] = useState(false);
   const [tier, setTier] = useState<"all" | "tier1" | "western" | "emerging">("all");
@@ -40,15 +40,23 @@ export function IcpExplorer({ icp }: { icp: IcpDistributions }) {
   const sorted = [...items];
   if (byLtv && supportsLtv) sorted.sort((a, b) => (b.avgLtv ?? 0) - (a.avgLtv ?? 0));
 
+  // In safe mode, `avgLtv` already holds a 0-100 index and `count` is stripped.
   const barItems: BarItem[] = sorted.map((it) => {
     const showLtv = byLtv && supportsLtv;
+    const ltvText = it.avgLtv != null ? (safe ? `idx ${Math.round(it.avgLtv)}` : usd(it.avgLtv, { cents: true })) : "—";
+    const volRight = safe ? `${it.pct}%` : `${it.count}`;
+    const volSub = safe
+      ? it.convRate != null
+        ? `${it.convRate}% conv`
+        : ""
+      : [`${it.pct}%`, it.avgLtv != null ? `${usd(it.avgLtv)} LTV` : null, it.convRate != null ? `${it.convRate}% conv` : null]
+          .filter(Boolean)
+          .join(" · ");
     return {
       label: it.label + (it.smallSample ? " ·" : ""),
-      value: showLtv ? it.avgLtv ?? 0 : it.count,
-      right: showLtv ? (it.avgLtv != null ? usd(it.avgLtv, { cents: true }) : "—") : `${it.count}`,
-      sub: showLtv
-        ? `${it.count} ppl`
-        : `${it.pct}%${it.avgLtv != null ? ` · ${usd(it.avgLtv)} LTV` : ""}${it.convRate != null ? ` · ${it.convRate}% conv` : ""}`,
+      value: showLtv ? it.avgLtv ?? 0 : safe ? it.pct : it.count,
+      right: showLtv ? ltvText : volRight,
+      sub: showLtv ? `${it.pct}%` : volSub,
       muted: it.smallSample,
     };
   });
@@ -94,7 +102,7 @@ export function IcpExplorer({ icp }: { icp: IcpDistributions }) {
               !supportsLtv && "cursor-not-allowed opacity-40"
             )}
           >
-            By avg LTV
+            {safe ? "By LTV index" : "By avg LTV"}
           </button>
         </div>
 

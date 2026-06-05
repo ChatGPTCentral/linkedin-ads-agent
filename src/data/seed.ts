@@ -28,7 +28,7 @@ export const seed: SeedBundle = {
       { dimension: "Company size", coveragePct: 6, basis: "174 records (Apollo)", strength: "thin" },
     ],
     notes: [
-      "1,624 converters out of 2,767 enriched records; $76,099 tracked lifetime value.",
+      "Most enriched records are converters, with lifetime value tracked per customer.",
       "Reuses the AI Central CRM ('ai-central-quiz') enrichment pipeline output — zero new Apollo credits.",
       "Aggregated & anonymized: no individual customer data is stored in this app.",
     ],
@@ -201,7 +201,7 @@ export const seed: SeedBundle = {
       evidence: [
         "Founders (18%) + C-Suite (17%) are a third of those reporting a job level",
         'Pipeline "decision_maker" persona = 42% of classified converters',
-        "High-LTV markets (CH $60, IL $62, PT $66) over-index here",
+        "Premium markets (Switzerland, Israel, Portugal) over-index here",
       ],
       motivations: [
         "Turn AI into business leverage and cost savings",
@@ -223,7 +223,7 @@ export const seed: SeedBundle = {
         "A manager or director responsible for upskilling a team on AI. Smaller in volume but a strong-converting, higher-ACV B2B angle.",
       evidence: [
         '"Train my team on AI" converts at 12.9% — second-highest of any goal',
-        "Managers show the highest converter LTV ($58) of any job level",
+        "Managers show the highest converter LTV of any job level",
         "Agency/Consulting (21%) and Education/Training (10%) lead industries",
       ],
       motivations: [

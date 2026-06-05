@@ -3,6 +3,7 @@ import Link from "next/link";
 import "./globals.css";
 import { Nav } from "@/components/Nav";
 import { seed } from "@/data/seed";
+import { SAFE_MODE } from "@/lib/safe";
 
 export const metadata: Metadata = {
   title: "AI Central — LinkedIn Ads Campaign Designer",
@@ -23,6 +24,11 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
             <Nav />
           </div>
         </header>
+        {SAFE_MODE && (
+          <div className="no-print bg-amber-100 px-5 py-1.5 text-center text-xs text-amber-900">
+            Demo mode — absolute revenue &amp; customer counts are hidden; percentages &amp; relative comparisons only.
+          </div>
+        )}
         <main className="mx-auto max-w-6xl px-5 py-8">{children}</main>
         <footer className="no-print mx-auto max-w-6xl px-5 pb-10 pt-4 text-xs leading-relaxed text-zinc-400">
           Built from the AI Central CRM enrichment pipeline · aggregated &amp; anonymized · data baked {seed.meta.generatedAt}. No

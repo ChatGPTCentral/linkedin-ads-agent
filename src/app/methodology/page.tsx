@@ -1,6 +1,7 @@
 import { seed } from "@/data/seed";
 import { Card, Chip, CoverageBar, StackedBar } from "@/components/ui";
 import { num, usd } from "@/lib/format";
+import { SAFE_MODE } from "@/lib/safe";
 
 const SOURCES = [
   ["Stripe", "Payments & lifetime value, joined into the pipeline per customer."],
@@ -21,7 +22,7 @@ export default function MethodologyPage() {
     label: s.label,
     value: s.rows,
     color: ["bg-indigo-500", "bg-violet-400", "bg-zinc-300"][i] ?? "bg-zinc-300",
-    hint: `${num(s.converters)} buyers`,
+    hint: SAFE_MODE ? undefined : `${num(s.converters)} buyers`,
   }));
 
   return (
@@ -50,7 +51,14 @@ export default function MethodologyPage() {
         </div>
       </Card>
 
-      <Card title="The funnel" subtitle={`${num(seed.meta.totalRecords)} enriched records → ${num(seed.meta.converters)} converters · ${usd(seed.meta.totalLtv)} tracked LTV`}>
+      <Card
+        title="The funnel"
+        subtitle={
+          SAFE_MODE
+            ? "Enriched records → converters, with lifetime value tracked per customer"
+            : `${num(seed.meta.totalRecords)} enriched records → ${num(seed.meta.converters)} converters · ${usd(seed.meta.totalLtv)} tracked LTV`
+        }
+      >
         <StackedBar segments={funnelSegments} />
       </Card>
 
@@ -60,7 +68,7 @@ export default function MethodologyPage() {
             <div key={row.dimension} className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3 text-sm">
               <span className="text-zinc-700">{row.dimension}</span>
               <CoverageBar pct={row.coveragePct} strength={row.strength} />
-              <span className="text-right text-xs text-zinc-400">{row.basis}</span>
+              <span className="text-right text-xs capitalize text-zinc-400">{SAFE_MODE ? row.strength : row.basis}</span>
             </div>
           ))}
         </div>

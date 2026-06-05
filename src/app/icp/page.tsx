@@ -2,6 +2,7 @@ import Link from "next/link";
 import { seed } from "@/data/seed";
 import { Card, Chip, CoverageBar, SectionTitle } from "@/components/ui";
 import { IcpExplorer } from "@/components/IcpExplorer";
+import { SAFE_MODE, toSafeIcp } from "@/lib/safe";
 import type { PersonaCard } from "@/types";
 
 function PersonaCardView({ p }: { p: PersonaCard }) {
@@ -89,7 +90,7 @@ export default function IcpPage() {
             <div key={row.dimension} className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3 text-sm">
               <span className="text-zinc-700">{row.dimension}</span>
               <CoverageBar pct={row.coveragePct} strength={row.strength} />
-              <span className="text-right text-xs text-zinc-400">{row.basis}</span>
+              <span className="text-right text-xs capitalize text-zinc-400">{SAFE_MODE ? row.strength : row.basis}</span>
             </div>
           ))}
         </div>
@@ -97,7 +98,7 @@ export default function IcpPage() {
       </Card>
 
       <Card title="Explore the ICP" subtitle="Converters only · % shares within each dimension">
-        <IcpExplorer icp={seed.icp} />
+        <IcpExplorer icp={SAFE_MODE ? toSafeIcp(seed.icp) : seed.icp} safe={SAFE_MODE} />
       </Card>
 
       <div>
