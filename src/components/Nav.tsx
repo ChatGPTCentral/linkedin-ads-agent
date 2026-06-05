@@ -9,6 +9,7 @@ const LINKS = [
   { href: "/icp", label: "ICP Profile" },
   { href: "/audiences", label: "Audiences" },
   { href: "/brief", label: "Campaign Brief" },
+  { href: "/connect", label: "LinkedIn" },
   { href: "/methodology", label: "Methodology" },
 ];
 
