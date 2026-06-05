@@ -1,36 +1,65 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# AI Central — LinkedIn Ads Campaign Designer
 
-## Getting Started
+A simple web app that turns AI Central's **real conversion data** into a
+**high-converting LinkedIn Ads campaign design**: who actually buys *The
+Ultimate AI Library*, mapped onto LinkedIn's targeting taxonomy, with
+paste-ready audiences, ad copy, creative direction and a landing-page brief.
 
-First, run the development server:
+## How it works
+
+The ICP is built by **reusing the output of AI Central's existing CRM
+enrichment pipeline** (the `ai-central-quiz` project) — read directly from its
+Supabase `submissions` table with read-only `GROUP BY` aggregates.
+
+- **Zero new Apollo credits** — we consume the pipeline's already-enriched data.
+- **Aggregated & anonymized** — this repo stores only counts, percentages and
+  averages. No names, emails, or IP addresses are ever committed.
+- Stripe conversions are already joined into the pipeline, so the ICP is built
+  from **1,624 actual converters** ($76k tracked LTV), not guesses.
+
+## What's inside
+
+| Page | What it shows |
+|------|----------------|
+| `/` Dashboard | Conversion overview: customers, LTV, growth, top markets, what converts |
+| `/icp` ICP Profile | Interactive explorer (geo, seniority, goals, industry, personas) + data-coverage honesty |
+| `/audiences` Audience Design | 3 LinkedIn audiences with paste-ready Campaign Manager facet specs |
+| `/brief` Campaign Brief | Ad copy (with char limits), creative direction, landing-page brief — exportable |
+| `/methodology` | Sources, privacy, taxonomy references, caveats |
+
+## Key findings (from the real data)
+
+- **Geo:** US is 53% of converters; highest-LTV markets are Switzerland ($60),
+  Israel ($62) and Portugal ($66); India ($24) and Brazil ($32) are
+  high-volume but low-value → excluded from the high-CPM campaigns.
+- **Seniority:** skews Individual Contributor / Founder / C-Suite; managers
+  convert at the highest LTV ($58).
+- **Motivation:** "Develop AI products/workflows" (13% conv) and "Train my team
+  on AI" (13%) convert best; "Prompt engineering" drives the highest LTV.
+- **Economics:** ~$47 average LTV on a high-CPM platform → spend leans to the
+  yearly/lifetime offers and premium markets.
+
+## Tech
+
+Next.js 16 (App Router) · React 19 · TypeScript · Tailwind CSS v4. Pages render
+statically from committed aggregate seed data (`src/data/seed.ts`) — **no
+runtime API keys or database**. Charts are dependency-free (SVG/CSS).
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+npm run dev      # http://localhost:3000
+npm run build    # production build (typecheck + compile)
+npm run lint
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Data & privacy
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+| File | Contents |
+|------|----------|
+| `src/data/seed.ts` | Aggregated converter analysis (no PII) |
+| `src/data/linkedin.ts` | LinkedIn taxonomy + recommended audiences, copy, creative, LP brief |
+| `src/types.ts` | Shared types (no row-level customer arrays by design) |
+| `docs/PIPELINE.md` | How the aggregates were produced (runbook) |
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+No LinkedIn Ads API is connected, so audiences are delivered as **paste-ready
+specs** for LinkedIn Campaign Manager, not an automated push.
