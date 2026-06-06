@@ -15,16 +15,27 @@ function createdId(res: Response): string | null {
 // Creates a Campaign Group + Campaign in PAUSED/DRAFT state. Never launches
 // spend — a human reviews targeting + adds creative in Campaign Manager first.
 export async function POST(req: NextRequest) {
-  const { audienceId, copyId, adAccountUrn, dailyBudgetUsd, objective, conversionUrn, optimizationTargetType } =
-    (await req.json()) as {
-      audienceId?: string;
-      copyId?: string;
-      adAccountUrn?: string;
-      dailyBudgetUsd?: number;
-      objective?: "WEBSITE_CONVERSION" | "WEBSITE_VISIT";
-      conversionUrn?: string;
-      optimizationTargetType?: string;
-    };
+  const {
+    audienceId,
+    copyId,
+    adAccountUrn,
+    dailyBudgetUsd,
+    objective,
+    conversionUrn,
+    optimizationTargetType,
+    includeSegments,
+    excludeSegments,
+  } = (await req.json()) as {
+    audienceId?: string;
+    copyId?: string;
+    adAccountUrn?: string;
+    dailyBudgetUsd?: number;
+    objective?: "WEBSITE_CONVERSION" | "WEBSITE_VISIT";
+    conversionUrn?: string;
+    optimizationTargetType?: string;
+    includeSegments?: string[];
+    excludeSegments?: string[];
+  };
 
   const audience = AUDIENCES.find((a) => a.id === audienceId);
   if (!audience) return NextResponse.json({ error: "unknown_audience" }, { status: 400 });
@@ -58,7 +69,7 @@ export async function POST(req: NextRequest) {
   // 2) Targeting
   const include = await resolveAudienceFacets(audience, t.accessToken);
   const exclude = await resolveExcludedLocations(audience, t.accessToken);
-  const targetingCriteria = buildTargetingCriteria(include, exclude);
+  const targetingCriteria = buildTargetingCriteria(include, exclude, { includeSegments, excludeSegments });
 
   // 3) Campaign (PAUSED). Default objective optimizes for conversions
   // (purchases); falls back to traffic (WEBSITE_VISIT) if requested.

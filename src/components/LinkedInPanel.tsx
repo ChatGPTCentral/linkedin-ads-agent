@@ -12,6 +12,7 @@ type PerfData = {
   totals: { spend: number; conversions: number; cpa: number | null; roas: number | null };
   roasEstimated: boolean;
 };
+type Segment = { urn: string; name: string; type: string | null; status: string | null };
 
 function extractAccounts(accounts: unknown): { urn: string; label: string }[] {
   if (!accounts || typeof accounts !== "object") return [];
@@ -42,6 +43,9 @@ export function LinkedInPanel({ audiences }: { audiences: AudienceLite[] }) {
   const [objective, setObjective] = useState<"WEBSITE_CONVERSION" | "WEBSITE_VISIT">("WEBSITE_CONVERSION");
   const [perf, setPerf] = useState<PerfData | null>(null);
   const [perfErr, setPerfErr] = useState("");
+  const [segments, setSegments] = useState<Segment[]>([]);
+  const [includeSegs, setIncludeSegs] = useState<string[]>([]);
+  const [excludeSegs, setExcludeSegs] = useState<string[]>([]);
 
   const loadStatus = useCallback(async () => {
     try {
@@ -80,7 +84,20 @@ export function LinkedInPanel({ audiences }: { audiences: AudienceLite[] }) {
     setSavedBusy("load");
     try {
       const r = await fetch(`/api/linkedin/audiences?account=${encodeURIComponent(acct)}`);
-      setSavedOut(JSON.stringify(await r.json(), null, 2));
+      const data = await r.json();
+      setSavedOut(JSON.stringify(data, null, 2));
+      if (Array.isArray(data?.segments)) {
+        setSegments(
+          data.segments
+            .filter((s: { id?: number | string }) => s.id != null)
+            .map((s: { id: number | string; name?: string; type?: string; status?: string }) => ({
+              urn: `urn:li:dmpSegment:${s.id}`,
+              name: s.name ?? String(s.id),
+              type: s.type ?? null,
+              status: s.status ?? null,
+            }))
+        );
+      }
     } catch (e) {
       setSavedOut(String(e));
     } finally {
@@ -170,6 +187,30 @@ export function LinkedInPanel({ audiences }: { audiences: AudienceLite[] }) {
       setPerfErr(String(e));
     } finally {
       setIgBusy(null);
+    }
+  }
+
+  function targetSeg(urn: string) {
+    setIncludeSegs((l) => (l.includes(urn) ? l.filter((u) => u !== urn) : [...l, urn]));
+    setExcludeSegs((l) => l.filter((u) => u !== urn));
+  }
+  function excludeSeg(urn: string) {
+    setExcludeSegs((l) => (l.includes(urn) ? l.filter((u) => u !== urn) : [...l, urn]));
+    setIncludeSegs((l) => l.filter((u) => u !== urn));
+  }
+  async function createPredictive(sourceSegmentUrn: string) {
+    setSavedBusy("predictive");
+    try {
+      const r = await fetch("/api/linkedin/predictive", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sourceSegmentUrn, account: acct || undefined }),
+      });
+      setSavedOut(JSON.stringify(await r.json(), null, 2));
+    } catch (e) {
+      setSavedOut(String(e));
+    } finally {
+      setSavedBusy(null);
     }
   }
 
@@ -264,6 +305,11 @@ export function LinkedInPanel({ audiences }: { audiences: AudienceLite[] }) {
             </select>
           )}
         </div>
+        {(includeSegs.length > 0 || excludeSegs.length > 0) && (
+          <p className="mb-3 text-[11px] text-zinc-500">
+            Targeting {includeSegs.length} segment(s) · Excluding {excludeSegs.length} — toggle these under Saved audiences below.
+          </p>
+        )}
         <div className="space-y-3">
           {audiences.map((a) => (
             <div key={a.id} className="rounded-lg border border-zinc-200 p-3">
@@ -291,6 +337,8 @@ export function LinkedInPanel({ audiences }: { audiences: AudienceLite[] }) {
                           adAccountUrn: acct,
                           objective,
                           conversionUrn: objective === "WEBSITE_CONVERSION" ? convUrn || undefined : undefined,
+                          includeSegments: includeSegs.length ? includeSegs : undefined,
+                          excludeSegments: excludeSegs.length ? excludeSegs : undefined,
                         },
                         `create-${a.id}`,
                         a.id
@@ -425,7 +473,7 @@ export function LinkedInPanel({ audiences }: { audiences: AudienceLite[] }) {
 
       <Card
         title="Saved audiences (Matched Audiences)"
-        subtitle="Read your account's DMP segments, or create a list-based audience from emails. Needs the rw_dmp_segments scope — reconnect after deploy."
+        subtitle="Load segments, then Target (retarget) or Exclude (existing customers) them on campaigns, or seed a predictive audience. Create a list audience from pasted emails (hashed). Needs rw_dmp_segments — reconnect after deploy."
       >
         <div className="space-y-3">
           <button
@@ -438,6 +486,51 @@ export function LinkedInPanel({ audiences }: { audiences: AudienceLite[] }) {
           >
             {savedBusy === "load" ? "Loading…" : "Load saved audiences"}
           </button>
+
+          {segments.length > 0 && (
+            <div className="space-y-1.5">
+              {segments.map((s) => {
+                const inc = includeSegs.includes(s.urn);
+                const exc = excludeSegs.includes(s.urn);
+                return (
+                  <div key={s.urn} className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-zinc-200 p-2">
+                    <span className="min-w-0 truncate text-xs text-zinc-700">
+                      {s.name}
+                      {s.type ? <span className="text-zinc-400"> · {s.type}</span> : null}
+                      {s.status ? <span className="text-zinc-400"> · {s.status}</span> : null}
+                    </span>
+                    <div className="flex gap-1.5">
+                      <button
+                        onClick={() => targetSeg(s.urn)}
+                        className={cn(
+                          "rounded-md border px-2 py-0.5 text-[11px] font-medium",
+                          inc ? "border-green-300 bg-green-50 text-green-700" : "border-zinc-200 hover:bg-zinc-50"
+                        )}
+                      >
+                        {inc ? "Targeting ✓" : "Target"}
+                      </button>
+                      <button
+                        onClick={() => excludeSeg(s.urn)}
+                        className={cn(
+                          "rounded-md border px-2 py-0.5 text-[11px] font-medium",
+                          exc ? "border-amber-300 bg-amber-50 text-amber-700" : "border-zinc-200 hover:bg-zinc-50"
+                        )}
+                      >
+                        {exc ? "Excluding ✓" : "Exclude"}
+                      </button>
+                      <button
+                        disabled={savedBusy !== null}
+                        onClick={() => createPredictive(s.urn)}
+                        className="rounded-md border border-zinc-200 px-2 py-0.5 text-[11px] font-medium hover:bg-zinc-50"
+                      >
+                        {savedBusy === "predictive" ? "…" : "Seed predictive"}
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
 
           <div className="space-y-2 rounded-lg border border-zinc-200 p-3">
             <label className="text-xs font-semibold uppercase tracking-wide text-zinc-400">Create list audience</label>

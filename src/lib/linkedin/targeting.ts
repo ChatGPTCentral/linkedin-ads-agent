@@ -19,6 +19,10 @@ export const FACET = {
   skills: "urn:li:adTargetingFacet:skills",
   staffCountRanges: "urn:li:adTargetingFacet:staffCountRanges",
   interests: "urn:li:adTargetingFacet:interests",
+  // Matched/retargeting/customer-list audiences. Exact facet urn is version-
+  // specific; audienceMatchingSegments is the documented one, dynamicSegments a fallback.
+  audienceMatchingSegments: "urn:li:adTargetingFacet:audienceMatchingSegments",
+  dynamicSegments: "urn:li:adTargetingFacet:dynamicSegments",
 } as const;
 
 // urn:li:seniority:N
@@ -158,16 +162,28 @@ export async function resolveExcludedLocations(audience: LinkedInAudience, token
   return audience.excludeLocations ? resolveLocations(audience.excludeLocations, token) : null;
 }
 
-/** Build the RestLi targetingCriteria object from resolved facets. */
-export function buildTargetingCriteria(include: ResolvedFacet[], exclude: ResolvedFacet | null) {
+/**
+ * Build the RestLi targetingCriteria object from resolved facets, plus optional
+ * matched-audience segments to target (include) or exclude (e.g. existing
+ * customers). Segments are AND'd into include / OR'd into exclude.
+ */
+export function buildTargetingCriteria(
+  include: ResolvedFacet[],
+  exclude: ResolvedFacet | null,
+  opts?: { includeSegments?: string[]; excludeSegments?: string[] }
+) {
   const criteria: {
     include: { and: { or: Record<string, string[]> }[] };
     exclude?: { or: Record<string, string[]> };
   } = {
     include: { and: include.map((f) => ({ or: { [f.facetUrn]: f.values } })) },
   };
-  if (exclude && exclude.values.length) {
-    criteria.exclude = { or: { [exclude.facetUrn]: exclude.values } };
+  if (opts?.includeSegments?.length) {
+    criteria.include.and.push({ or: { [FACET.audienceMatchingSegments]: opts.includeSegments } });
   }
+  const excludeOr: Record<string, string[]> = {};
+  if (exclude && exclude.values.length) excludeOr[exclude.facetUrn] = exclude.values;
+  if (opts?.excludeSegments?.length) excludeOr[FACET.audienceMatchingSegments] = opts.excludeSegments;
+  if (Object.keys(excludeOr).length) criteria.exclude = { or: excludeOr };
   return criteria;
 }
