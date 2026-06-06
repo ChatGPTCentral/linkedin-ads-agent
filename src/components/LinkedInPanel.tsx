@@ -24,6 +24,10 @@ export function LinkedInPanel({ audiences }: { audiences: AudienceLite[] }) {
   const [acct, setAcct] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [out, setOut] = useState<Record<string, string>>({});
+  const [savedBusy, setSavedBusy] = useState<string | null>(null);
+  const [savedOut, setSavedOut] = useState<string>("");
+  const [audName, setAudName] = useState("");
+  const [audEmails, setAudEmails] = useState("");
 
   const loadStatus = useCallback(async () => {
     try {
@@ -56,6 +60,35 @@ export function LinkedInPanel({ audiences }: { audiences: AudienceLite[] }) {
     await fetch("/api/linkedin/disconnect", { method: "POST" });
     setStatus(null);
     loadStatus();
+  }
+
+  async function loadSaved() {
+    setSavedBusy("load");
+    try {
+      const r = await fetch(`/api/linkedin/audiences?account=${encodeURIComponent(acct)}`);
+      setSavedOut(JSON.stringify(await r.json(), null, 2));
+    } catch (e) {
+      setSavedOut(String(e));
+    } finally {
+      setSavedBusy(null);
+    }
+  }
+
+  async function createList() {
+    setSavedBusy("create");
+    try {
+      const emails = audEmails.split(/[\s,;]+/).map((s) => s.trim()).filter(Boolean);
+      const r = await fetch("/api/linkedin/audiences", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: audName, emails, account: acct || undefined }),
+      });
+      setSavedOut(JSON.stringify(await r.json(), null, 2));
+    } catch (e) {
+      setSavedOut(String(e));
+    } finally {
+      setSavedBusy(null);
+    }
   }
 
   const accounts = extractAccounts(status?.accounts);
@@ -157,6 +190,55 @@ export function LinkedInPanel({ audiences }: { audiences: AudienceLite[] }) {
               )}
             </div>
           ))}
+        </div>
+      </Card>
+
+      <Card
+        title="Saved audiences (Matched Audiences)"
+        subtitle="Read your account's DMP segments, or create a list-based audience from emails. Needs the rw_dmp_segments scope — reconnect after deploy."
+      >
+        <div className="space-y-3">
+          <button
+            disabled={!status?.connected || savedBusy !== null}
+            onClick={loadSaved}
+            className={cn(
+              "rounded-md border px-2.5 py-1 text-xs font-medium",
+              status?.connected ? "border-zinc-200 hover:bg-zinc-50" : "border-zinc-100 text-zinc-300"
+            )}
+          >
+            {savedBusy === "load" ? "Loading…" : "Load saved audiences"}
+          </button>
+
+          <div className="space-y-2 rounded-lg border border-zinc-200 p-3">
+            <label className="text-xs font-semibold uppercase tracking-wide text-zinc-400">Create list audience</label>
+            <input
+              value={audName}
+              onChange={(e) => setAudName(e.target.value)}
+              placeholder="Audience name"
+              className="w-full rounded-md border border-zinc-200 px-3 py-1.5 text-sm"
+            />
+            <textarea
+              value={audEmails}
+              onChange={(e) => setAudEmails(e.target.value)}
+              rows={4}
+              placeholder="Paste emails (comma, space or newline separated). Hashed before upload — raw emails never leave your server."
+              className="w-full rounded-md border border-zinc-200 px-3 py-1.5 font-mono text-sm"
+            />
+            <button
+              disabled={!status?.connected || !audName.trim() || savedBusy !== null}
+              onClick={createList}
+              className={cn(
+                "rounded-md px-2.5 py-1 text-xs font-medium",
+                status?.connected && audName.trim() ? "bg-zinc-900 text-white hover:bg-zinc-800" : "bg-zinc-100 text-zinc-400"
+              )}
+            >
+              {savedBusy === "create" ? "Creating…" : "Create list audience"}
+            </button>
+          </div>
+
+          {savedOut && (
+            <pre className="max-h-72 overflow-auto rounded-md bg-zinc-50 p-2 text-[11px] leading-relaxed text-zinc-700">{savedOut}</pre>
+          )}
         </div>
       </Card>
     </div>
