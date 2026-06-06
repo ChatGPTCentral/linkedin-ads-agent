@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getValidToken, liPost } from "@/lib/linkedin/client";
+import { DEFAULT_AD_ACCOUNT_URN } from "@/lib/linkedin/config";
 import { AUDIENCES, AD_COPY } from "@/data/linkedin";
 import { resolveAudienceFacets, resolveExcludedLocations, buildTargetingCriteria } from "@/lib/linkedin/targeting";
 
@@ -23,15 +24,24 @@ export async function POST(req: NextRequest) {
 
   const audience = AUDIENCES.find((a) => a.id === audienceId);
   if (!audience) return NextResponse.json({ error: "unknown_audience" }, { status: 400 });
-  if (!adAccountUrn) return NextResponse.json({ error: "adAccountUrn_required" }, { status: 400 });
+  const account = adAccountUrn || DEFAULT_AD_ACCOUNT_URN;
 
   const t = await getValidToken();
   if ("error" in t) return NextResponse.json({ error: t.error }, { status: 401 });
 
+  // Scheduled to start tomorrow; the campaign stays PAUSED so nothing spends.
+  // Satisfies LinkedIn's required runSchedule field.
+  const startAt = Date.now() + 24 * 60 * 60 * 1000;
+
   // 1) Campaign group (DRAFT)
   const cgRes = await liPost(
     "/adCampaignGroups",
-    { account: adAccountUrn, name: `[Designer] ${audience.name}`, status: "DRAFT" },
+    {
+      account,
+      name: `[Designer] ${audience.name}`,
+      status: "DRAFT",
+      runSchedule: { start: startAt },
+    },
     t.accessToken
   );
   if (!cgRes.ok) {
@@ -47,7 +57,7 @@ export async function POST(req: NextRequest) {
   // 3) Campaign (PAUSED)
   const budget = Math.max(dailyBudgetUsd ?? 25, 10);
   const campaign = {
-    account: adAccountUrn,
+    account,
     campaignGroup: campaignGroupUrn,
     name: `[Designer] ${audience.name}`,
     type: "SPONSORED_UPDATES",
@@ -55,6 +65,7 @@ export async function POST(req: NextRequest) {
     dailyBudget: { amount: String(budget), currencyCode: "USD" },
     unitCost: { amount: "10", currencyCode: "USD" },
     locale: { country: "US", language: "en" },
+    runSchedule: { start: startAt },
     targetingCriteria,
     objectiveType: "WEBSITE_VISIT",
     status: "PAUSED",

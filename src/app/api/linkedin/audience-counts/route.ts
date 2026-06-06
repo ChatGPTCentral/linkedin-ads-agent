@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getValidToken, liGet } from "@/lib/linkedin/client";
+import { DEFAULT_AD_ACCOUNT_URN } from "@/lib/linkedin/config";
 import { AUDIENCES } from "@/data/linkedin";
 import { resolveAudienceFacets, resolveExcludedLocations, buildTargetingCriteria } from "@/lib/linkedin/targeting";
 
@@ -20,9 +21,10 @@ export async function POST(req: NextRequest) {
 
   // Audience Counts API. The exact query encoding is version-specific; we return
   // the resolved facets + criteria + raw response so we can tune it once live.
+  const account = adAccountUrn || DEFAULT_AD_ACCOUNT_URN;
   const params =
     `q=targetingCriteria&targetingCriteria=${encodeURIComponent(JSON.stringify(criteria))}` +
-    (adAccountUrn ? `&account=${encodeURIComponent(adAccountUrn)}` : "");
+    `&account=${encodeURIComponent(account)}`;
   let result: unknown;
   try {
     const res = await liGet(`/audienceCounts?${params}`, t.accessToken);

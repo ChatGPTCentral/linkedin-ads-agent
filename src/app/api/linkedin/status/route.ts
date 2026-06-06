@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getValidToken, liGet } from "@/lib/linkedin/client";
+import { DEFAULT_AD_ACCOUNT_URN } from "@/lib/linkedin/config";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -15,5 +16,5 @@ export async function GET() {
   } catch (e) {
     accounts = { error: (e as Error).message };
   }
-  return NextResponse.json({ connected: true, accounts });
+  return NextResponse.json({ connected: true, accounts, defaultAccountUrn: DEFAULT_AD_ACCOUNT_URN });
 }
