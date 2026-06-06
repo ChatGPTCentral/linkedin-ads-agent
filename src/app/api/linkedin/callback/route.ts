@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getLinkedInEnv } from "@/lib/linkedin/config";
-import { exchangeCode, toStored } from "@/lib/linkedin/oauth";
+import { exchangeCode, toStored, verifyState } from "@/lib/linkedin/oauth";
 import { seal, TOKEN_COOKIE } from "@/lib/linkedin/tokenStore";
 
 export const runtime = "nodejs";
@@ -17,8 +17,11 @@ export async function GET(req: NextRequest) {
   const err = url.searchParams.get("error");
   if (err) return NextResponse.redirect(new URL(`/connect?error=${encodeURIComponent(err)}`, base));
 
-  const expected = req.cookies.get("li_oauth_state")?.value;
-  if (!code || !state || !expected || state !== expected) {
+  if (!code) {
+    return NextResponse.redirect(new URL("/connect?error=no_code", base));
+  }
+  // Verify the signed CSRF state (HMAC); no cookie involved.
+  if (!verifyState(env.encKey, state)) {
     return NextResponse.redirect(new URL("/connect?error=bad_state", base));
   }
 
