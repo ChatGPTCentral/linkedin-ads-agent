@@ -71,7 +71,7 @@ export async function POST(req: NextRequest) {
     targetingCriteria,
     objectiveType: "WEBSITE_VISIT",
     offsiteDeliveryEnabled: false,
-    politicalIntent: "NONE",
+    politicalIntent: "NOT_POLITICAL",
     status: "PAUSED",
   };
   const cRes = await liPost(`/adAccounts/${accountId}/adCampaigns`, campaign, t.accessToken);

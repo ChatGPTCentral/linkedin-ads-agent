@@ -62,6 +62,28 @@ export const STAFF_COUNT_URN: Record<string, string> = {
   "10001+": "urn:li:staffCountRange:(10001,2147483647)",
 };
 
+// LinkedIn standard country geo URNs (urn:li:geo:N). These ids are stable and
+// well-known, so we resolve locations directly instead of relying on the
+// typeahead finder (which requires extra params and can silently return empty).
+export const GEO_URN: Record<string, string> = {
+  "United States": "urn:li:geo:103644278",
+  "United Kingdom": "urn:li:geo:101165590",
+  "Canada": "urn:li:geo:101174742",
+  "Australia": "urn:li:geo:101452733",
+  "Ireland": "urn:li:geo:104738515",
+  "New Zealand": "urn:li:geo:105490917",
+  "Switzerland": "urn:li:geo:106693272",
+  "Netherlands": "urn:li:geo:102890719",
+  "Singapore": "urn:li:geo:102454443",
+  "Germany": "urn:li:geo:101282230",
+  "Israel": "urn:li:geo:101620260",
+  "Belgium": "urn:li:geo:100565514",
+  "France": "urn:li:geo:105015875",
+  "Portugal": "urn:li:geo:100364837",
+  "India": "urn:li:geo:102713980",
+  "Brazil": "urn:li:geo:106057199",
+};
+
 interface TypeaheadEntity {
   urn?: string;
   id?: string;
@@ -99,10 +121,28 @@ function staticFacet(facetUrn: string, values: string[] | undefined, map: Record
   return { facetUrn, values: resolved, unresolved: unresolved.length ? unresolved : undefined };
 }
 
+/** Resolve locations from the static country map first, then typeahead fallback. */
+async function resolveLocations(values: string[] | undefined, token: string): Promise<ResolvedFacet | null> {
+  if (!values?.length) return null;
+  const resolved: string[] = [];
+  const unresolved: string[] = [];
+  for (const v of values) {
+    const staticUrn = GEO_URN[v];
+    if (staticUrn) {
+      resolved.push(staticUrn);
+      continue;
+    }
+    const urn = await typeahead(FACET.locations, v, token);
+    if (urn) resolved.push(urn);
+    else unresolved.push(v);
+  }
+  return { facetUrn: FACET.locations, values: resolved, unresolved: unresolved.length ? unresolved : undefined };
+}
+
 /** Resolve all of an audience's facets into URN groups. */
 export async function resolveAudienceFacets(audience: LinkedInAudience, token: string): Promise<ResolvedFacet[]> {
   const out: (ResolvedFacet | null)[] = [];
-  out.push(await resolveMany(FACET.locations, audience.locations, token));
+  out.push(await resolveLocations(audience.locations, token));
   out.push(staticFacet(FACET.seniorities, audience.facets.jobSeniorities, SENIORITY_URN));
   out.push(staticFacet(FACET.jobFunctions, audience.facets.jobFunctions, FUNCTION_URN));
   out.push(audience.facets.jobTitles ? await resolveMany(FACET.titles, audience.facets.jobTitles, token) : null);
@@ -115,7 +155,7 @@ export async function resolveAudienceFacets(audience: LinkedInAudience, token: s
 
 /** Resolve excluded locations only (used for the exclude block). */
 export async function resolveExcludedLocations(audience: LinkedInAudience, token: string): Promise<ResolvedFacet | null> {
-  return audience.excludeLocations ? resolveMany(FACET.locations, audience.excludeLocations, token) : null;
+  return audience.excludeLocations ? resolveLocations(audience.excludeLocations, token) : null;
 }
 
 /** Build the RestLi targetingCriteria object from resolved facets. */
