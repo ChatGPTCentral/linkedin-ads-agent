@@ -38,6 +38,10 @@ export const LINKEDIN = {
 export const DEFAULT_AD_ACCOUNT_ID = process.env.LINKEDIN_AD_ACCOUNT_ID || "510931916";
 export const DEFAULT_AD_ACCOUNT_URN = `urn:li:sponsoredAccount:${DEFAULT_AD_ACCOUNT_ID}`;
 
+// Avg converter LTV (USD) from src/data/seed.ts aggregates. Used as the default
+// conversion value and the ROAS fallback until per-purchase values are sent.
+export const AVG_LTV_USD = 46.86;
+
 export interface LinkedInEnv {
   clientId: string;
   clientSecret: string;
