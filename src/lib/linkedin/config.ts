@@ -2,11 +2,32 @@
 // Secrets are read from env (set these in Vercel project settings, and in
 // .env.local for local dev — see docs/LINKEDIN.md). Nothing here is committed.
 
+function ym(d: Date): string {
+  return `${d.getUTCFullYear()}${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+function monthsAgo(n: number): string {
+  const d = new Date();
+  d.setUTCDate(1);
+  d.setUTCMonth(d.getUTCMonth() - n);
+  return ym(d);
+}
+// LinkedIn keeps only ~12 monthly versions (YYYYMM) active, so a hardcoded value
+// goes stale (NONEXISTENT_VERSION). Accept an explicit LINKEDIN_API_VERSION only
+// if it's recent enough; otherwise (unset / malformed / older than ~12 months)
+// fall back to a recent active version (2 months back — released & in-window).
+function resolveVersion(envVal: string | undefined): string {
+  const recent = monthsAgo(2);
+  const floor = monthsAgo(13);
+  const now = ym(new Date());
+  const m = envVal?.match(/\d{6}/)?.[0]; // normalize e.g. "20241101" -> "202411"
+  return m && m >= floor && m <= now ? m : recent;
+}
+
 export const LINKEDIN = {
   authBase: "https://www.linkedin.com/oauth/v2",
   apiBase: "https://api.linkedin.com/rest",
-  /** Versioned REST API — bump as LinkedIn releases new versions (YYYYMM). */
-  version: process.env.LINKEDIN_API_VERSION || "202411",
+  /** Versioned REST API (YYYYMM). Self-correcting so it can't go stale. */
+  version: resolveVersion(process.env.LINKEDIN_API_VERSION),
   restliVersion: "2.0.0",
   /** Scopes: read ads, write ads (create campaigns), reporting, basic profile. */
   scopes: ["r_ads", "rw_ads", "r_ads_reporting", "r_basicprofile"],
