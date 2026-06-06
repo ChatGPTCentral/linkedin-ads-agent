@@ -48,7 +48,8 @@ export async function POST(req: NextRequest) {
   if (!cgRes.ok) {
     return NextResponse.json({ step: "campaignGroup", status: cgRes.status, error: (await cgRes.text()).slice(0, 600) }, { status: 502 });
   }
-  const campaignGroupUrn = createdId(cgRes);
+  const campaignGroupId = createdId(cgRes);
+  const campaignGroupUrn = campaignGroupId ? `urn:li:sponsoredCampaignGroup:${campaignGroupId}` : null;
 
   // 2) Targeting
   const include = await resolveAudienceFacets(audience, t.accessToken);
@@ -69,6 +70,8 @@ export async function POST(req: NextRequest) {
     runSchedule: { start: startAt },
     targetingCriteria,
     objectiveType: "WEBSITE_VISIT",
+    offsiteDeliveryEnabled: false,
+    politicalIntent: "NONE",
     status: "PAUSED",
   };
   const cRes = await liPost(`/adAccounts/${accountId}/adCampaigns`, campaign, t.accessToken);
@@ -83,7 +86,7 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({
     ok: true,
     status: "PAUSED",
-    created: { campaignGroupUrn, campaignUrn: createdId(cRes) },
+    created: { campaignGroupUrn, campaignUrn: `urn:li:sponsoredCampaign:${createdId(cRes)}` },
     note: "Created PAUSED. Add a creative (copy below), review targeting, then launch in Campaign Manager.",
     suggestedCopy: copy ?? null,
     unresolvedFacets: include.flatMap((f) => f.unresolved ?? []),
