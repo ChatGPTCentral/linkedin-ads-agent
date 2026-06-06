@@ -29,8 +29,8 @@ export const LINKEDIN = {
   /** Versioned REST API (YYYYMM). Self-correcting so it can't go stale. */
   version: resolveVersion(process.env.LINKEDIN_API_VERSION),
   restliVersion: "2.0.0",
-  /** Scopes: read ads, write ads (create campaigns), reporting, basic profile. */
-  scopes: ["r_ads", "rw_ads", "r_ads_reporting", "r_basicprofile"],
+  /** Scopes: read ads, write ads (create campaigns), reporting, basic profile, manage DMP segments (audiences). */
+  scopes: ["r_ads", "rw_ads", "r_ads_reporting", "r_basicprofile", "rw_dmp_segments"],
 } as const;
 
 // Default ad account, so the user never has to enter it. Override with the
