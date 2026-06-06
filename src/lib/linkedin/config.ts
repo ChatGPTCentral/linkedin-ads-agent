@@ -33,6 +33,11 @@ export const LINKEDIN = {
   scopes: ["r_ads", "rw_ads", "r_ads_reporting", "r_basicprofile"],
 } as const;
 
+// Default ad account, so the user never has to enter it. Override with the
+// LINKEDIN_AD_ACCOUNT_ID env var.
+export const DEFAULT_AD_ACCOUNT_ID = process.env.LINKEDIN_AD_ACCOUNT_ID || "510931916";
+export const DEFAULT_AD_ACCOUNT_URN = `urn:li:sponsoredAccount:${DEFAULT_AD_ACCOUNT_ID}`;
+
 export interface LinkedInEnv {
   clientId: string;
   clientSecret: string;

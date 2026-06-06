@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Card, Chip, cn } from "./ui";
 
 type AudienceLite = { id: string; name: string; copyId?: string };
-type Status = { connected: boolean; reason?: string; accounts?: unknown };
+type Status = { connected: boolean; reason?: string; accounts?: unknown; defaultAccountUrn?: string };
 
 function extractAccounts(accounts: unknown): { urn: string; label: string }[] {
   if (!accounts || typeof accounts !== "object") return [];
@@ -28,7 +28,9 @@ export function LinkedInPanel({ audiences }: { audiences: AudienceLite[] }) {
   const loadStatus = useCallback(async () => {
     try {
       const r = await fetch("/api/linkedin/status");
-      setStatus(await r.json());
+      const data: Status = await r.json();
+      setStatus(data);
+      if (data.defaultAccountUrn) setAcct((cur) => cur || data.defaultAccountUrn!);
     } catch (e) {
       setStatus({ connected: false, reason: (e as Error).message });
     }
