@@ -44,3 +44,11 @@ export function liPost(path: string, body: unknown, token: string): Promise<Resp
     body: JSON.stringify(body),
   });
 }
+
+export function liPut(path: string, body: unknown, token: string): Promise<Response> {
+  return fetch(`${LINKEDIN.apiBase}${path}`, {
+    method: "PUT",
+    headers: liHeaders(token),
+    body: JSON.stringify(body),
+  });
+}
