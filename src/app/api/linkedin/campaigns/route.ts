@@ -25,6 +25,7 @@ export async function POST(req: NextRequest) {
   const audience = AUDIENCES.find((a) => a.id === audienceId);
   if (!audience) return NextResponse.json({ error: "unknown_audience" }, { status: 400 });
   const account = adAccountUrn || DEFAULT_AD_ACCOUNT_URN;
+  const accountId = account.split(":").pop() ?? account; // numeric id for path-scoped endpoints
 
   const t = await getValidToken();
   if ("error" in t) return NextResponse.json({ error: t.error }, { status: 401 });
@@ -35,7 +36,7 @@ export async function POST(req: NextRequest) {
 
   // 1) Campaign group (DRAFT)
   const cgRes = await liPost(
-    "/adCampaignGroups",
+    `/adAccounts/${accountId}/adCampaignGroups`,
     {
       account,
       name: `[Designer] ${audience.name}`,
@@ -70,7 +71,7 @@ export async function POST(req: NextRequest) {
     objectiveType: "WEBSITE_VISIT",
     status: "PAUSED",
   };
-  const cRes = await liPost("/adCampaigns", campaign, t.accessToken);
+  const cRes = await liPost(`/adAccounts/${accountId}/adCampaigns`, campaign, t.accessToken);
   if (!cRes.ok) {
     return NextResponse.json(
       { step: "campaign", campaignGroupUrn, status: cRes.status, error: (await cRes.text()).slice(0, 600), targetingCriteria },
