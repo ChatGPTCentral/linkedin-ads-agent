@@ -1,16 +1,36 @@
 # LinkedIn Ads API integration
 
-Connects the app to your LinkedIn ad account to **(1) validate audience reach**,
-**(2) pull reporting**, and **(3) create paused draft campaigns** from the
-audiences we designed. Campaigns are always created **PAUSED** — nothing spends
-money without a human launching it in Campaign Manager.
+Connects the app to your LinkedIn ad account to drive a **measured, purchase-
+optimized funnel**: **(1)** validate audience reach, **(2)** track conversions
+via the Insight Tag, **(3)** create **paused**, conversion-optimized draft
+campaigns, **(4)** report **CPA / ROAS**, and **(5)** build retargeting /
+customer-exclusion / predictive audiences. Campaigns are always created
+**PAUSED** — nothing spends money without a human launching it in Campaign Manager.
 
-> Status: foundation built. The OAuth + token flow is standard and ready. The
-> LinkedIn **read/write payload encodings** (Audience Counts query, targeting
-> URN resolution, campaign/creative bodies) are best-effort and need tuning
-> against live API responses — the routes return raw responses + the resolved
-> targeting so we can iterate quickly once connected. **Creative creation is not
-> yet automated** (add the creative in Campaign Manager for now).
+> Status: OAuth + token flow ready. Campaign create (group + campaign), audience
+> reach, DMP list upload, and the conversion objective work end-to-end. Several
+> **payload encodings are best-effort** and tuned against live responses — every
+> route returns the raw LinkedIn error so we can iterate. **Creative creation is
+> not yet automated** (add the creative in Campaign Manager for now).
+
+## Conversion tracking (Insight Tag) — required to optimize for payers
+1. In the app's **Conversion tracking** card, click **Load Insight Tag** (or copy
+   the Partner ID from Campaign Manager → Analyze → Insight Tag).
+2. Paste the snippet into your landing page `<head>` (Next.js: `next/script`
+   with `strategy="afterInteractive"`). This app only *surfaces* the snippet.
+3. Confirm the tag shows **Active** in Campaign Manager (first signal up to ~24h).
+4. Create conversions (**Create PURCHASE / SIGN_UP conversion**) and, in Campaign
+   Manager, tie each to a landing-page URL rule (purchase-confirmation → PURCHASE,
+   trial/subscribe → SIGN_UP). Default conversion value = avg LTV ($46.86).
+5. When creating a campaign, keep **Optimize for: Purchases** and pick the
+   conversion so LinkedIn optimizes toward payers.
+6. Once the tag has data, build a **website-retargeting** audience in Campaign
+   Manager and a **customer-exclusion** list (paste purchaser emails → hashed),
+   then use **Target / Exclude** on the Saved-audiences segments.
+
+> Scopes: conversions run on the existing `r_ads`/`rw_ads`/`rw_dmp_segments`. If
+> `/conversions` returns 403, add `rw_conversions` to `LINKEDIN.scopes` and
+> **Disconnect → Connect** to re-consent (confirm the app has the scope first).
 
 ## 1. LinkedIn developer app
 - App must have the **Advertising API** product approved, with scopes
@@ -45,13 +65,17 @@ Redeploy after setting them.
 - `src/lib/linkedin/` — config, OAuth, encrypted cookie token store, REST client,
   facet→URN targeting resolver.
 - `src/app/api/linkedin/*` — route handlers: `auth`, `callback`, `status`,
-  `disconnect`, `audience-counts`, `analytics`, `campaigns`.
+  `disconnect`, `audience-counts`, `analytics` (CPA/ROAS via `metrics.ts`),
+  `campaigns` (conversion objective + segment include/exclude), `audiences`
+  (DMP list read/create), `insight-tag`, `conversions`, `predictive`.
 - Token: encrypted (AES-256-GCM) httpOnly cookie. Upgrade to Supabase if multiple
   operators need shared state.
 
 ## Known verification points (tune once live)
-- `adTargetingEntities` typeahead query encoding (locations, industries, titles, skills).
-- Seniority / function / staffCountRange URN ids.
-- `audienceCounts` and `adAnalytics` query parameter encoding (RestLi).
-- Created-entity id header name on POST (`x-restli-id`).
+- `adTargetingEntities` typeahead query encoding (locations resolved via static GEO_URN instead).
+- `audienceCounts` / `adAnalytics` query encoding; `conversionValueInLocalCurrency` field (auto-dropped if rejected).
+- `POST /conversions` enum casing (`type`, `conversionMethod`) + value field name.
+- `PUT /campaignConversions/(campaign:..,conversion:..)` compound-key encoding.
+- Matched-audience facet urn for include/exclude (`audienceMatchingSegments` vs `dynamicSegments`).
+- Predictive Audience creation (gated behind LinkedIn's private Matched Audiences API → CM fallback).
 - Creative creation (image upload + sponsored post) — not yet implemented.
