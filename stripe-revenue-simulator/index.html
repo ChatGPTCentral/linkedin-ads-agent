@@ -1,0 +1,712 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Stripe Revenue Simulator</title>
+<style>
+  :root{
+    --bg:#0b1020; --panel:#121a30; --panel2:#0f1730; --line:#23304f;
+    --txt:#e7ecf6; --muted:#9fb0cf; --accent:#635bff; --accent2:#22c55e;
+    --warn:#f59e0b; --danger:#ef4444; --chip:#1c2745;
+    --shadow:0 10px 30px rgba(0,0,0,.35);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--txt);
+    font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+  a{color:var(--accent)}
+  header{padding:22px 24px;border-bottom:1px solid var(--line);
+    background:linear-gradient(180deg,#101733,#0b1020)}
+  header h1{margin:0;font-size:20px;letter-spacing:.2px}
+  header p{margin:6px 0 0;color:var(--muted);font-size:13px;max-width:780px}
+  .wrap{display:grid;grid-template-columns:320px 1fr;gap:18px;padding:18px 24px;align-items:start}
+  @media (max-width:1000px){.wrap{grid-template-columns:1fr}}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;
+    padding:16px;box-shadow:var(--shadow)}
+  .panel h2{margin:0 0 12px;font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+  .sidebar{position:sticky;top:18px}
+  .field{margin-bottom:14px}
+  .field label{display:block;font-size:12px;color:var(--muted);margin-bottom:6px}
+  .field .row{display:flex;align-items:center;gap:10px}
+  input[type=range]{width:100%}
+  input[type=number],select,input[type=date]{width:100%;background:var(--panel2);
+    color:var(--txt);border:1px solid var(--line);border-radius:8px;padding:8px 9px;font:inherit}
+  .val{font-variant-numeric:tabular-nums;min-width:54px;text-align:right;color:var(--txt)}
+  .toggle{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--txt);cursor:pointer}
+  .btn{display:inline-flex;align-items:center;gap:8px;background:var(--accent);color:#fff;border:0;
+    border-radius:9px;padding:9px 13px;font:inherit;font-weight:600;cursor:pointer}
+  .btn.secondary{background:var(--chip);color:var(--txt);border:1px solid var(--line)}
+  .btn:disabled{opacity:.5;cursor:not-allowed}
+  .drop{border:1.5px dashed var(--line);border-radius:12px;padding:22px;text-align:center;
+    color:var(--muted);background:var(--panel2);cursor:pointer;transition:.15s}
+  .drop.drag{border-color:var(--accent);color:var(--txt);background:#141d3a}
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px 16px}
+  .card .k{font-size:12px;color:var(--muted)}
+  .card .v{font-size:24px;font-weight:700;margin-top:4px;font-variant-numeric:tabular-nums}
+  .card .s{font-size:12px;color:var(--muted);margin-top:4px}
+  .card.good .v{color:var(--accent2)} .card.warn .v{color:var(--warn)}
+  .stack{display:flex;flex-direction:column;gap:18px}
+  table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+  th,td{padding:8px 10px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
+  th:first-child,td:first-child{text-align:left}
+  th{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:600}
+  tbody tr:hover{background:#0f1830}
+  .scroll{max-height:420px;overflow:auto;border:1px solid var(--line);border-radius:10px}
+  .scroll table th{position:sticky;top:0;background:var(--panel);z-index:1}
+  .muted{color:var(--muted)}
+  .pill{display:inline-block;background:var(--chip);border:1px solid var(--line);border-radius:999px;
+    padding:1px 8px;font-size:11px;color:var(--muted)}
+  .pill.cancel{color:var(--warn);border-color:#5a4413}
+  .barwrap{width:100%;overflow-x:auto}
+  .legend{display:flex;gap:16px;font-size:12px;color:var(--muted);margin:2px 0 10px}
+  .legend i{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+  .hidden{display:none}
+  .note{font-size:12px;color:var(--muted);background:var(--panel2);border:1px solid var(--line);
+    border-radius:10px;padding:12px 14px}
+  .note ul{margin:6px 0 0;padding-left:18px}
+  .row2{display:flex;gap:10px;flex-wrap:wrap}
+  .sep{height:1px;background:var(--line);margin:14px 0}
+  .tiny{font-size:11px}
+  code{background:var(--panel2);border:1px solid var(--line);border-radius:5px;padding:1px 5px}
+</style>
+</head>
+<body>
+<header>
+  <h1>📈 Stripe Revenue Simulator</h1>
+  <p>Drop your Stripe <code>subscriptions.csv</code> export to forecast the revenue you should receive from
+  renewals. Everything runs <strong>in your browser</strong> — no data is uploaded or stored. Then dial the
+  assumptions (retention, fees, growth) to stress-test the book.</p>
+</header>
+
+<div class="wrap">
+  <!-- ============ SIDEBAR / CONTROLS ============ -->
+  <aside class="panel sidebar">
+    <h2>Data</h2>
+    <div id="drop" class="drop">
+      <div style="font-size:26px">📄</div>
+      <div><strong>Drop subscriptions.csv</strong></div>
+      <div class="tiny">or click to choose a file</div>
+      <input id="file" type="file" accept=".csv,text/csv" class="hidden" />
+    </div>
+    <div class="row2" style="margin-top:10px">
+      <button class="btn secondary" id="demoBtn">Load demo data</button>
+      <button class="btn secondary" id="clearBtn">Clear</button>
+    </div>
+    <div id="loaded" class="tiny muted" style="margin-top:8px"></div>
+
+    <div class="sep"></div>
+    <h2>Assumptions</h2>
+
+    <div class="field">
+      <label>Forecast horizon</label>
+      <select id="horizon">
+        <option value="6">6 months</option>
+        <option value="12" selected>12 months</option>
+        <option value="24">24 months</option>
+        <option value="36">36 months</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label>Forecast start</label>
+      <input type="date" id="startDate" />
+    </div>
+
+    <div class="field">
+      <label>Annual retention (renewal rate)</label>
+      <div class="row">
+        <input type="range" id="retention" min="0" max="100" step="1" value="100" />
+        <span class="val" id="retentionVal">100%</span>
+      </div>
+      <div class="tiny muted">100% = exactly what Stripe is scheduled to charge. Lower it to model churn.</div>
+    </div>
+
+    <div class="field">
+      <label class="toggle"><input type="checkbox" id="showNet" checked /> Show net of Stripe fees</label>
+      <div class="row" style="margin-top:8px">
+        <input type="number" id="feePct" value="2.9" step="0.1" min="0" /> <span class="muted">%</span>
+        <input type="number" id="feeFixed" value="0.30" step="0.01" min="0" /> <span class="muted">fixed</span>
+      </div>
+    </div>
+
+    <div class="field">
+      <label class="toggle"><input type="checkbox" id="treatCancel" /> Treat cancelling subs as renewing</label>
+    </div>
+
+    <div class="sep"></div>
+    <h2>What-if: new sales</h2>
+    <div class="field">
+      <label>New subscriptions per month</label>
+      <div class="row">
+        <input type="range" id="growth" min="0" max="200" step="1" value="0" />
+        <span class="val" id="growthVal">0</span>
+      </div>
+    </div>
+    <div class="field">
+      <label>Avg new-sub amount &amp; interval</label>
+      <div class="row">
+        <input type="number" id="growthAmt" value="39.75" step="0.01" min="0" />
+        <select id="growthInterval" style="max-width:120px">
+          <option value="year" selected>per year</option>
+          <option value="month">per month</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="sep"></div>
+    <div class="field">
+      <label class="toggle"><input type="checkbox" id="maskPii" checked /> Mask customer emails</label>
+    </div>
+    <div id="fxBox" class="hidden">
+      <div class="sep"></div>
+      <h2>Currency</h2>
+      <div class="field">
+        <label>Base currency</label>
+        <select id="baseCur"></select>
+      </div>
+      <div id="fxRates"></div>
+    </div>
+  </aside>
+
+  <!-- ============ RESULTS ============ -->
+  <main class="stack">
+    <div id="empty" class="note">
+      No data loaded yet. Export your subscriptions from
+      <a href="https://dashboard.stripe.com/subscriptions" target="_blank" rel="noopener">Stripe → Subscriptions → Export</a>
+      (CSV) and drop it on the left, or click <strong>Load demo data</strong> to explore with synthetic numbers.
+    </div>
+
+    <section id="results" class="hidden stack">
+      <div class="cards" id="cards"></div>
+
+      <div class="panel">
+        <h2>Monthly revenue forecast</h2>
+        <div class="legend">
+          <span><i style="background:var(--accent)"></i>Current subscriptions</span>
+          <span><i style="background:var(--accent2)"></i>Projected new sales</span>
+          <span class="muted">hover a bar for detail</span>
+        </div>
+        <div class="barwrap"><svg id="chart" width="100%" height="280" preserveAspectRatio="none"></svg></div>
+      </div>
+
+      <div class="panel">
+        <h2>Next revenues you should receive</h2>
+        <div class="tiny muted" style="margin:-6px 0 10px">
+          Chronological list of upcoming charges from your <em>current</em> subscriptions. Export for your records.</div>
+        <div class="row2" style="margin-bottom:10px">
+          <button class="btn secondary" id="exportRenewals">⬇ Export renewals CSV</button>
+          <button class="btn secondary" id="exportMonthly">⬇ Export monthly CSV</button>
+        </div>
+        <div class="scroll"><table id="renewals">
+          <thead><tr><th>Date</th><th>Customer</th><th>Product</th><th>Cur</th><th>Amount</th><th>Net</th></tr></thead>
+          <tbody></tbody>
+        </table></div>
+      </div>
+
+      <div class="wrap" style="padding:0;grid-template-columns:1fr 1fr;gap:18px">
+        <div class="panel">
+          <h2>Monthly detail</h2>
+          <div class="scroll"><table id="monthly">
+            <thead><tr><th>Month</th><th>Charges</th><th>Gross</th><th>Net</th></tr></thead>
+            <tbody></tbody>
+          </table></div>
+        </div>
+        <div class="panel">
+          <h2>By product (next horizon)</h2>
+          <div class="scroll"><table id="byProduct">
+            <thead><tr><th>Product</th><th>Subs</th><th>Gross</th></tr></thead>
+            <tbody></tbody>
+          </table></div>
+        </div>
+      </div>
+
+      <div class="note" id="caveats"></div>
+    </section>
+  </main>
+</div>
+
+<script>
+"use strict";
+
+/* ============================================================
+   1. CSV PARSING (RFC-4180-ish: quotes, escaped quotes, newlines)
+   ============================================================ */
+function parseCSV(text){
+  text = text.replace(/^﻿/, "");            // strip BOM
+  const rows = []; let row = [], field = "", i = 0, inQ = false;
+  while (i < text.length){
+    const c = text[i];
+    if (inQ){
+      if (c === '"'){
+        if (text[i+1] === '"'){ field += '"'; i += 2; continue; }
+        inQ = false; i++; continue;
+      }
+      field += c; i++; continue;
+    }
+    if (c === '"'){ inQ = true; i++; continue; }
+    if (c === ','){ row.push(field); field = ""; i++; continue; }
+    if (c === '\r'){ i++; continue; }
+    if (c === '\n'){ row.push(field); rows.push(row); row = []; field = ""; i++; continue; }
+    field += c; i++;
+  }
+  if (field.length || row.length){ row.push(field); rows.push(row); }
+  if (!rows.length) return [];
+  const headers = rows[0].map(h => h.trim());
+  return rows.slice(1)
+    .filter(r => r.length && r.some(v => v !== ""))
+    .map(r => { const o = {}; headers.forEach((h, j) => o[h] = (r[j] ?? "").trim()); return o; });
+}
+
+/* Pull a value by trying several known header spellings. */
+function pick(row, names){
+  for (const n of names) if (row[n] != null && row[n] !== "") return row[n];
+  return "";
+}
+
+/* Robust amount parser: handles "39,75", "1.234,56", "1,234.56", "120", "120.00". */
+function parseAmount(raw){
+  let s = String(raw).trim().replace(/[^\d.,-]/g, "");
+  if (!s) return 0;
+  const lastComma = s.lastIndexOf(","), lastDot = s.lastIndexOf(".");
+  const hasComma = lastComma > -1, hasDot = lastDot > -1;
+  if (hasComma && hasDot){
+    const dec = Math.max(lastComma, lastDot);              // last separator = decimal
+    const intPart = s.slice(0, dec).replace(/[.,]/g, "");
+    const frac = s.slice(dec + 1).replace(/[.,]/g, "");
+    return parseFloat(intPart + "." + frac) || 0;
+  }
+  if (hasComma || hasDot){
+    const sep = hasComma ? "," : ".";
+    const dec = hasComma ? lastComma : lastDot;
+    const after = s.length - dec - 1;
+    // single separator with >2 trailing digits (or grouped) → thousands separator
+    if (after !== 2 && (after === 3 || s.split(sep).length > 2)){
+      return parseFloat(s.replace(/[.,]/g, "")) || 0;
+    }
+    return parseFloat(s.replace(sep, ".").replace(/[.,]/g, m => m === "." ? "." : "")) || parseFloat(s.replace(",", ".")) || 0;
+  }
+  return parseFloat(s) || 0;
+}
+
+/* Parse Stripe UTC timestamps: "YYYY-MM-DD HH:MM[:SS]". */
+function parseDate(raw){
+  const s = String(raw || "").trim();
+  if (!s) return null;
+  const m = s.match(/(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?/);
+  if (m) return new Date(Date.UTC(+m[1], +m[2]-1, +m[3], +m[4], +m[5], +(m[6]||0)));
+  const d2 = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (d2) return new Date(Date.UTC(+d2[1], +d2[2]-1, +d2[3]));
+  const d = new Date(s); return isNaN(+d) ? null : d;
+}
+
+/* ============================================================
+   2. NORMALISE ROWS → SUBSCRIPTIONS
+   ============================================================ */
+const LIVE = new Set(["active", "trialing", "past_due", ""]);
+
+function buildSubs(rows){
+  return rows.map(r => {
+    const interval = (pick(r, ["Interval"]) || "month").toLowerCase();
+    return {
+      amount: parseAmount(pick(r, ["Amount"])),
+      qty: parseInt(pick(r, ["Quantity"]) || "1", 10) || 1,
+      currency: (pick(r, ["Currency"]) || "usd").toUpperCase(),
+      interval: ["year","month","week","day"].includes(interval) ? interval : "month",
+      status: (pick(r, ["Status"]) || "").toLowerCase(),
+      periodEnd: parseDate(pick(r, ["Current Period End (UTC)", "Current Period End"])),
+      cancelAtPeriodEnd: String(pick(r, ["Cancel At Period End"])).toLowerCase() === "true",
+      product: pick(r, ["Product", "Plan"]) || "(unknown product)",
+      email: pick(r, ["Customer Email"]),
+      name: pick(r, ["Customer Name", "Customer Description"]),
+      coupon: pick(r, ["Coupon"])
+    };
+  }).filter(s => s.periodEnd && LIVE.has(s.status));
+}
+
+/* ============================================================
+   3. PROJECTION ENGINE
+   ============================================================ */
+function advance(d, interval){
+  const x = new Date(d.getTime());
+  if (interval === "year") x.setUTCFullYear(x.getUTCFullYear() + 1);
+  else if (interval === "week") x.setUTCDate(x.getUTCDate() + 7);
+  else if (interval === "day") x.setUTCDate(x.getUTCDate() + 1);
+  else x.setUTCMonth(x.getUTCMonth() + 1);
+  return x;
+}
+function addMonths(d, n){ const x = new Date(d.getTime()); x.setUTCMonth(x.getUTCMonth() + n); return x; }
+function ym(d){ return d.getUTCFullYear() + "-" + String(d.getUTCMonth() + 1).padStart(2, "0"); }
+function intervalRetention(R, interval){
+  if (interval === "year") return R;
+  if (interval === "week") return Math.pow(R, 1/52);
+  if (interval === "day") return Math.pow(R, 1/365);
+  return Math.pow(R, 1/12);                                 // month
+}
+
+/* Per-charge generator for one subscription within [start,end]. */
+function subCharges(sub, start, end, R, treatCancel){
+  const out = [];
+  if (sub.cancelAtPeriodEnd && !treatCancel) return out;     // ends, won't renew
+  const r = intervalRetention(R, sub.interval);
+  let d = new Date(sub.periodEnd.getTime());
+  while (d < start) d = advance(d, sub.interval);            // skip elapsed (already-paid) periods
+  let m = 0;
+  while (d <= end){
+    m++;
+    const survival = Math.pow(r, m);
+    out.push({ date: new Date(d.getTime()), raw: sub.amount * sub.qty, survival, sub });
+    d = advance(d, sub.interval);
+  }
+  return out;
+}
+
+/* Whole-book projection. Returns months[], renewals[], byProduct, totals. */
+function project(subs, cfg){
+  const start = cfg.start, end = addMonths(start, cfg.horizon);
+  const R = cfg.retention;
+  const fx = cur => (cfg.rates[cur] ?? 1);
+  const net = gross => gross * (1 - cfg.feePct/100);
+  const fixedExp = surv => cfg.feeFixed * surv;
+
+  // ordered month buckets
+  const months = [];
+  const idx = {};
+  for (let d = new Date(start); d <= end; d = addMonths(d, 1)){
+    const key = ym(d);
+    idx[key] = months.length;
+    months.push({ key, label: d.toLocaleDateString("en-US",{month:"short",year:"2-digit",timeZone:"UTC"}),
+                  existGross:0, existNet:0, growthGross:0, growthNet:0, count:0 });
+  }
+  const put = (date, gross, netv, isGrowth, count) => {
+    const b = months[idx[ym(date)]]; if (!b) return;
+    if (isGrowth){ b.growthGross += gross; b.growthNet += netv; }
+    else { b.existGross += gross; b.existNet += netv; b.count += count; }
+  };
+
+  // existing book
+  const renewals = [];
+  const byProduct = {};
+  for (const s of subs){
+    for (const c of subCharges(s, start, end, R, cfg.treatCancel)){
+      const grossLocal = c.raw * c.survival;
+      const gross = grossLocal * fx(s.currency);
+      const netv = (net(grossLocal) - fixedExp(c.survival)) * fx(s.currency);
+      put(c.date, gross, netv, false, c.survival);
+      renewals.push({ date: c.date, sub: s, raw: c.raw, gross: grossLocal, net: net(c.raw) - cfg.feeFixed,
+                      currency: s.currency, survival: c.survival });
+      const p = byProduct[s.product] || (byProduct[s.product] = { subs:new Set(), gross:0 });
+      p.subs.add(s.email + "|" + s.product); p.gross += gross;
+    }
+  }
+  renewals.sort((a,b) => a.date - b.date);
+
+  // what-if new sales: one cohort signs up each month
+  if (cfg.growth > 0){
+    const gi = cfg.growthInterval, gr = intervalRetention(R, gi), gAmt = cfg.growthAmt * cfg.growth;
+    for (let j = 0; j < cfg.horizon; j++){
+      let d = addMonths(start, j), k = 0;
+      while (d <= end){
+        const surv = Math.pow(gr, k);                        // signup = full, then churn
+        const grossLocal = gAmt * surv;
+        put(d, grossLocal * fx(cfg.baseCur), (net(grossLocal) - fixedExp(surv) * cfg.growth) * fx(cfg.baseCur), true, 0);
+        k++; d = advance(d, gi);
+      }
+    }
+  }
+
+  // rolling near-term windows (existing book only — "money on the books")
+  const sumWindow = days => {
+    const lim = new Date(start.getTime() + days*864e5);
+    let g = 0; for (const r of renewals) if (r.date >= start && r.date <= lim) g += r.gross * fx(r.currency);
+    return g;
+  };
+
+  const totals = {
+    existGross: months.reduce((a,b)=>a+b.existGross,0),
+    existNet: months.reduce((a,b)=>a+b.existNet,0),
+    growthGross: months.reduce((a,b)=>a+b.growthGross,0),
+    next30: sumWindow(30), next90: sumWindow(90), next365: sumWindow(365),
+    chargeCount: renewals.length
+  };
+  return { months, renewals, byProduct, totals, start, end };
+}
+
+/* ============================================================
+   4. STATE + RENDER
+   ============================================================ */
+const $ = sel => document.querySelector(sel);
+let SUBS = [];
+let LAST = null;
+
+function detectCurrencies(){
+  const set = new Set(SUBS.map(s => s.currency));
+  return [...set];
+}
+function fmtMoney(v, cur){
+  try { return new Intl.NumberFormat("en-US",{style:"currency",currency:cur||baseCurrency()}).format(v||0); }
+  catch { return (cur||"") + " " + (v||0).toFixed(2); }
+}
+function baseCurrency(){ return $("#baseCur").value || (detectCurrencies()[0] || "USD"); }
+function maskEmail(e){
+  if (!$("#maskPii").checked || !e) return e || "(no email)";
+  const [u, d] = e.split("@"); if (!d) return e;
+  return (u[0]||"") + "•••@" + d;
+}
+
+function readConfig(){
+  const curs = detectCurrencies();
+  const rates = {}; curs.forEach(c => {
+    const el = document.getElementById("fx_" + c);
+    rates[c] = el ? (parseFloat(el.value) || 1) : 1;
+  });
+  rates[baseCurrency()] = 1;
+  return {
+    horizon: +$("#horizon").value,
+    start: parseDate($("#startDate").value) || new Date(),
+    retention: (+$("#retention").value) / 100,
+    feePct: $("#showNet").checked ? (+$("#feePct").value) : 0,
+    feeFixed: $("#showNet").checked ? (+$("#feeFixed").value) : 0,
+    treatCancel: $("#treatCancel").checked,
+    growth: +$("#growth").value,
+    growthAmt: +$("#growthAmt").value,
+    growthInterval: $("#growthInterval").value,
+    baseCur: baseCurrency(),
+    rates
+  };
+}
+
+function recompute(){
+  if (!SUBS.length){ return; }
+  const cfg = readConfig();
+  LAST = project(SUBS, cfg);
+  render(cfg, LAST);
+}
+
+function render(cfg, R){
+  $("#empty").classList.add("hidden");
+  $("#results").classList.remove("hidden");
+  const cur = cfg.baseCur;
+
+  // MRR / ARR (normalised, in base currency)
+  const cancelling = SUBS.filter(s => s.cancelAtPeriodEnd);
+  const fx = c => (cfg.rates[c] ?? 1);
+  const monthlyNorm = s => (s.interval==="year" ? s.amount*s.qty/12 :
+                            s.interval==="week" ? s.amount*s.qty*52/12 :
+                            s.interval==="day" ? s.amount*s.qty*365/12 : s.amount*s.qty) * fx(s.currency);
+  const mrr = SUBS.reduce((a,s)=>a+monthlyNorm(s),0);
+  const mrrRisk = cancelling.reduce((a,s)=>a+monthlyNorm(s),0);
+
+  // cards
+  const net = R.totals.existNet, gross = R.totals.existGross;
+  const cards = [
+    ["Active subscriptions", String(SUBS.length), cancelling.length + " set to cancel"],
+    ["MRR (normalised)", fmtMoney(mrr,cur), "ARR " + fmtMoney(mrr*12,cur)],
+    ["Next 30 days", fmtMoney(R.totals.next30,cur), "from current subs", "good"],
+    ["Next 90 days", fmtMoney(R.totals.next90,cur), "from current subs", "good"],
+    ["Next 12 months", fmtMoney(R.totals.next365,cur), "scheduled charges", "good"],
+    ["Horizon total (" + cfg.horizon + "m)", fmtMoney(gross,cur),
+       ($("#showNet").checked ? ("net " + fmtMoney(net,cur)) : "gross")],
+    ["MRR at risk (cancelling)", fmtMoney(mrrRisk,cur), cancelling.length + " subs", "warn"],
+  ];
+  if (cfg.growth > 0) cards.push(["+ Projected new sales", fmtMoney(R.totals.growthGross,cur),
+       cfg.growth + "/mo @ " + fmtMoney(cfg.growthAmt,cur), "good"]);
+  $("#cards").innerHTML = cards.map(c =>
+    `<div class="card ${c[3]||""}"><div class="k">${c[0]}</div><div class="v">${c[1]}</div><div class="s">${c[2]||""}</div></div>`
+  ).join("");
+
+  drawChart(R.months, cur);
+
+  // renewals list (cap 250 rows)
+  const rb = $("#renewals tbody");
+  rb.innerHTML = R.renewals.slice(0, 250).map(r => {
+    const d = r.date.toISOString().slice(0,10);
+    const cancel = r.sub.cancelAtPeriodEnd ? ` <span class="pill cancel">cancels</span>` : "";
+    return `<tr><td>${d}</td><td>${maskEmail(r.sub.email)}${cancel}</td>
+      <td title="${r.sub.product.replace(/"/g,'')}">${trunc(r.sub.product,42)}</td>
+      <td>${r.currency}</td><td>${fmtMoney(r.raw,r.currency)}</td>
+      <td>${$("#showNet").checked ? fmtMoney(r.net,r.currency) : "—"}</td></tr>`;
+  }).join("") || `<tr><td colspan="6" class="muted">No upcoming charges in this window.</td></tr>`;
+
+  // monthly table
+  $("#monthly tbody").innerHTML = R.months.map(m => {
+    const g = m.existGross + m.growthGross, n = m.existNet + m.growthNet;
+    return `<tr><td>${m.label}</td><td>${Math.round(m.count*100)/100}</td>
+      <td>${fmtMoney(g,cur)}</td><td>${$("#showNet").checked?fmtMoney(n,cur):"—"}</td></tr>`;
+  }).join("");
+
+  // by product
+  const prods = Object.entries(R.byProduct).sort((a,b)=>b[1].gross-a[1].gross);
+  $("#byProduct tbody").innerHTML = prods.map(([p,v]) =>
+    `<tr><td title="${p.replace(/"/g,'')}">${trunc(p,46)}</td><td>${v.subs.size}</td><td>${fmtMoney(v.gross,cur)}</td></tr>`
+  ).join("") || `<tr><td colspan="3" class="muted">—</td></tr>`;
+
+  // caveats
+  const couponCount = SUBS.filter(s=>s.coupon).length;
+  $("#caveats").innerHTML = `<strong>How to read this</strong>
+    <ul>
+      <li>The forecast projects each subscription's <em>scheduled</em> renewal charges from
+          <code>Current Period End</code> forward by its billing interval.</li>
+      <li><strong>${cancelling.length}</strong> subscription(s) are set to cancel at period end and contribute
+          $0 future revenue${cfg.treatCancel ? " — but the <em>“treat cancelling as renewing”</em> toggle is ON, so they are included" : ""}.</li>
+      <li>Retention is set to <strong>${Math.round(cfg.retention*100)}%</strong> per year; at 100% this equals exactly what Stripe is scheduled to attempt.</li>
+      ${couponCount ? `<li><strong>${couponCount}</strong> subscription(s) have a coupon. The <code>Amount</code> shown is the plan price; an active coupon may reduce the real charge.</li>` : ""}
+      <li>Not modelled: failed/declined payments (involuntary churn), taxes, mid-cycle upgrades/downgrades, refunds, and FX drift.
+          ${$("#showNet").checked ? `Net subtracts ${cfg.feePct}% + ${fmtMoney(cfg.feeFixed,cur)} per charge.` : "Toggle “net of fees” to subtract Stripe processing fees."}</li>
+    </ul>`;
+}
+
+function trunc(s, n){ s = String(s); return s.length > n ? s.slice(0, n-1) + "…" : s; }
+
+/* SVG bar chart: stacked existing + growth per month. */
+function drawChart(months, cur){
+  const svg = $("#chart");
+  const W = Math.max(svg.clientWidth || 800, months.length * 26);
+  const H = 280, padB = 34, padT = 12, padL = 56, padR = 8;
+  const max = Math.max(1, ...months.map(m => m.existGross + m.growthGross));
+  const bw = (W - padL - padR) / months.length;
+  const y = v => padT + (H - padB - padT) * (1 - v / max);
+  let g = `<g font-size="10" fill="#9fb0cf">`;
+  // gridlines
+  for (let t = 0; t <= 4; t++){
+    const v = max * t / 4, yy = y(v);
+    g += `<line x1="${padL}" x2="${W-padR}" y1="${yy}" y2="${yy}" stroke="#23304f"/>`;
+    g += `<text x="${padL-6}" y="${yy+3}" text-anchor="end">${shortMoney(v,cur)}</text>`;
+  }
+  months.forEach((m, i) => {
+    const x = padL + i*bw + bw*0.15, w = bw*0.7;
+    const eg = m.existGross, gg = m.growthGross, tot = eg + gg;
+    const yTot = y(tot), yExist = y(eg);
+    const title = `${m.label}\nCurrent: ${fmtMoney(eg,cur)}${gg?`\nNew sales: ${fmtMoney(gg,cur)}`:""}\nTotal: ${fmtMoney(tot,cur)}`;
+    g += `<g><title>${title}</title>`;
+    if (gg) g += `<rect x="${x}" y="${yTot}" width="${w}" height="${Math.max(0,yExist-yTot)}" fill="#22c55e" rx="2"/>`;
+    g += `<rect x="${x}" y="${yExist}" width="${w}" height="${Math.max(0,(H-padB)-yExist)}" fill="#635bff" rx="2"/>`;
+    g += `</g>`;
+    if (months.length <= 24 || i % 2 === 0)
+      g += `<text x="${x+w/2}" y="${H-padB+14}" text-anchor="middle" font-size="9">${m.label}</text>`;
+  });
+  g += `</g>`;
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  svg.innerHTML = g;
+}
+function shortMoney(v, cur){
+  if (v >= 1000) return "$" + (v/1000).toFixed(v>=10000?0:1) + "k";
+  return "$" + Math.round(v);
+}
+
+/* ============================================================
+   5. FX UI (only when multiple currencies are present)
+   ============================================================ */
+function buildFxUI(){
+  const curs = detectCurrencies();
+  const box = $("#fxBox"), base = $("#baseCur"), rates = $("#fxRates");
+  if (curs.length <= 1){ box.classList.add("hidden"); base.innerHTML = `<option>${curs[0]||"USD"}</option>`; return; }
+  box.classList.remove("hidden");
+  base.innerHTML = curs.map(c => `<option>${c}</option>`).join("");
+  const render = () => {
+    rates.innerHTML = curs.filter(c => c !== base.value).map(c =>
+      `<div class="field"><label>1 ${c} = ? ${base.value}</label>
+       <input type="number" id="fx_${c}" value="1" step="0.0001" min="0"></div>`).join("");
+    curs.forEach(c => { const el = document.getElementById("fx_"+c); if (el) el.addEventListener("input", recompute); });
+  };
+  base.onchange = () => { render(); recompute(); };
+  render();
+}
+
+/* ============================================================
+   6. LOAD / WIRE-UP
+   ============================================================ */
+function loadText(text, label){
+  const rows = parseCSV(text);
+  SUBS = buildSubs(rows);
+  $("#loaded").textContent = SUBS.length
+    ? `✓ ${SUBS.length} live subscriptions from ${label}`
+    : `⚠ Parsed ${rows.length} rows but found 0 live subscriptions — is this a Stripe subscriptions export?`;
+  if (!$("#startDate").value) $("#startDate").value = new Date().toISOString().slice(0,10);
+  buildFxUI();
+  recompute();
+}
+
+function exportCSV(filename, header, rows){
+  const esc = v => /[",\n]/.test(String(v)) ? '"' + String(v).replace(/"/g,'""') + '"' : String(v);
+  const csv = [header.join(","), ...rows.map(r => r.map(esc).join(","))].join("\n");
+  const url = URL.createObjectURL(new Blob([csv], {type:"text/csv"}));
+  const a = document.createElement("a"); a.href = url; a.download = filename; a.click();
+  URL.revokeObjectURL(url);
+}
+
+// Synthetic demo data (clearly fake — no real customers).
+function demoCSV(){
+  const today = new Date();
+  const iso = d => d.toISOString().slice(0,16).replace("T"," ");
+  const head = "id,Customer Email,Customer Name,Plan,Product,Quantity,Currency,Interval,Amount,Status,Current Period End (UTC),Coupon,Cancel At Period End";
+  const lines = [head];
+  const plans = [
+    ["🗃️ Ultimate AI Library — 2026 (Yearly)", "year", "39,75"],
+    ["🗃️ Ultimate AI Library — 2026 (Yearly)", "year", "59,75"],
+    ["🗃️ Ultimate AI Library — 2025 (Yearly)", "year", "29,75"],
+    ["🗃️ Pro Plan (Yearly)", "year", "119,00"],
+    ["🗃️ Ultimate AI Library — 2025 (Monthly)", "month", "7,99"],
+  ];
+  for (let i = 0; i < 60; i++){
+    const p = plans[i % plans.length];
+    const offsetDays = Math.floor((i * 6.1) % 360) + 1;          // spread renewals across the year
+    const end = new Date(today.getTime() + offsetDays*864e5);
+    const coupon = i % 9 === 0 ? "WELCOME10" : "";
+    const cancel = i % 17 === 0 ? "true" : "false";
+    // column order matches `head`: …,Interval,Amount,Status,Period End,Coupon,Cancel
+    // Amount is quoted because it uses a comma decimal ("39,75").
+    lines.push([`sub_demo${i}`, `customer${i}@example.com`, `Demo Customer ${i}`, `price_demo`,
+      `"${p[0]}"`, "1", "usd", p[1], `"${p[2]}"`, "active", `"${iso(end)}"`, coupon, cancel].join(","));
+  }
+  return lines.join("\n");
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+  const drop = $("#drop"), file = $("#file");
+  drop.addEventListener("click", () => file.click());
+  ["dragenter","dragover"].forEach(e => drop.addEventListener(e, ev => { ev.preventDefault(); drop.classList.add("drag"); }));
+  ["dragleave","drop"].forEach(e => drop.addEventListener(e, ev => { ev.preventDefault(); drop.classList.remove("drag"); }));
+  drop.addEventListener("drop", ev => { const f = ev.dataTransfer.files[0]; if (f) readFile(f); });
+  file.addEventListener("change", () => { if (file.files[0]) readFile(file.files[0]); });
+  function readFile(f){ const r = new FileReader(); r.onload = () => loadText(r.result, f.name); r.readAsText(f); }
+
+  $("#demoBtn").addEventListener("click", () => loadText(demoCSV(), "demo data"));
+  $("#clearBtn").addEventListener("click", () => {
+    SUBS = []; LAST = null; $("#loaded").textContent = "";
+    $("#results").classList.add("hidden"); $("#empty").classList.remove("hidden"); file.value = "";
+  });
+
+  // live recompute on every control
+  ["horizon","startDate","retention","feePct","feeFixed","showNet","treatCancel",
+   "growth","growthAmt","growthInterval","maskPii"].forEach(id => {
+    const el = document.getElementById(id);
+    el.addEventListener("input", () => { syncLabels(); recompute(); });
+    el.addEventListener("change", () => { syncLabels(); recompute(); });
+  });
+  function syncLabels(){
+    $("#retentionVal").textContent = $("#retention").value + "%";
+    $("#growthVal").textContent = $("#growth").value;
+  }
+  syncLabels();
+
+  $("#exportRenewals").addEventListener("click", () => {
+    if (!LAST) return;
+    exportCSV("upcoming-renewals.csv",
+      ["date","customer_email","product","currency","amount","net_after_fees","survival_prob"],
+      LAST.renewals.map(r => [r.date.toISOString().slice(0,10), maskEmail(r.sub.email),
+        r.sub.product, r.currency, r.raw.toFixed(2), r.net.toFixed(2), r.survival.toFixed(3)]));
+  });
+  $("#exportMonthly").addEventListener("click", () => {
+    if (!LAST) return;
+    exportCSV("monthly-forecast.csv",
+      ["month","scheduled_charges","gross_current","gross_new_sales","gross_total","net_total"],
+      LAST.months.map(m => [m.key, Math.round(m.count*100)/100, m.existGross.toFixed(2),
+        m.growthGross.toFixed(2), (m.existGross+m.growthGross).toFixed(2), (m.existNet+m.growthNet).toFixed(2)]));
+  });
+
+  window.addEventListener("resize", () => { if (LAST) drawChart(LAST.months, baseCurrency()); });
+});
+</script>
+</body>
+</html>

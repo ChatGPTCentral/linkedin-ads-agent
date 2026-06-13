@@ -1,0 +1,13 @@
+id,Customer ID,Customer Email,Customer Name,Plan,Product,Product ID,Quantity,Currency,Interval,Amount,Status,Created (UTC),Current Period End (UTC),Trial End (UTC),Coupon,Cancel At Period End
+sub_demo001,cus_demo001,customer001@example.com,Demo Customer 1,price_demoY,"🗃️ Ultimate AI Library — 2026 Edition (Yearly)",prod_demo,1,usd,year,"39,75",active,2026-01-05 10:00,2026-07-02 10:00,,,false
+sub_demo002,cus_demo002,customer002@example.com,Demo Customer 2,price_demoY,"🗃️ Ultimate AI Library — 2026 Edition (Yearly)",prod_demo,1,usd,year,"59,75",active,2025-11-18 14:30,2026-07-21 14:30,,WELCOME10,false
+sub_demo003,cus_demo003,customer003@example.com,Demo Customer 3,price_demoY2,"🗃️ Ultimate AI Library — 2025 Edition (Yearly)",prod_demo2,1,usd,year,"29,75",active,2025-08-12 20:29,2026-08-12 20:29,,,true
+sub_demo004,cus_demo004,customer004@example.com,Demo Customer 4,price_demoPro,"🗃️ Pro Plan (Yearly)",prod_pro,1,usd,year,"119,00",active,2025-09-30 09:15,2026-09-30 09:15,,,false
+sub_demo005,cus_demo005,customer005@example.com,Demo Customer 5,price_demoM,"🗃️ Ultimate AI Library — 2025 Edition (Monthly)",prod_demo2,1,usd,month,"7,99",active,2026-05-20 08:00,2026-06-20 08:00,,,false
+sub_demo006,cus_demo006,customer006@example.com,Demo Customer 6,price_demoY,"🗃️ Ultimate AI Library — 2026 Edition (Yearly)",prod_demo,1,usd,year,"39,75",active,2025-10-11 11:11,2026-10-11 11:11,,,false
+sub_demo007,cus_demo007,customer007@example.com,Demo Customer 7,price_demoY,"🗃️ Ultimate AI Library — 2026 Edition (Yearly)",prod_demo,1,usd,year,"39,75",active,2025-12-02 17:45,2026-12-02 17:45,,,false
+sub_demo008,cus_demo008,customer008@example.com,Demo Customer 8,price_demoM,"🗃️ Ultimate AI Library — 2025 Edition (Monthly)",prod_demo2,1,usd,month,"7,99",active,2026-06-01 06:30,2026-07-01 06:30,,,false
+sub_demo009,cus_demo009,customer009@example.com,Demo Customer 9,price_demoY2,"🗃️ Ultimate AI Library — 2025 Edition (Yearly)",prod_demo2,1,usd,year,"29,75",active,2026-01-13 16:46,2027-01-13 16:46,,,true
+sub_demo010,cus_demo010,customer010@example.com,Demo Customer 10,price_demoPro,"🗃️ Pro Plan (Yearly)",prod_pro,1,usd,year,"120,00",active,2026-02-19 13:38,2027-02-19 13:38,,WELCOME10,false
+sub_demo011,cus_demo011,customer011@example.com,Demo Customer 11,price_demoY,"🗃️ Ultimate AI Library — 2026 Edition (Yearly)",prod_demo,1,usd,year,"59,97",active,2026-03-04 19:00,2027-03-04 19:00,,,false
+sub_demo012,cus_demo012,customer012@example.com,Demo Customer 12,price_demoY,"🗃️ Ultimate AI Library — 2026 Edition (Yearly)",prod_demo,1,usd,year,"39,75",active,2026-04-22 12:00,2027-04-22 12:00,,,false
