@@ -11,6 +11,15 @@ function createdId(res: Response): string | null {
   return res.headers.get("x-restli-id") || res.headers.get("x-linkedin-id");
 }
 
+/** Matched Audiences run on rw_dmp_segments, which isn't granted to the LinkedIn app yet (see LINKEDIN.scopes). */
+const SCOPE_HINT =
+  "Missing scope rw_dmp_segments (Matched Audiences). Request it for the app on developer.linkedin.com, add it back to LINKEDIN.scopes, then Disconnect → Connect to re-consent.";
+
+/** Attach the scope hint to 403 error payloads. */
+function hint403(status: number): { hint?: string } {
+  return status === 403 ? { hint: SCOPE_HINT } : {};
+}
+
 interface DmpSegment {
   id?: number | string;
   name?: string;
@@ -27,7 +36,7 @@ export async function GET(req: NextRequest) {
 
   const res = await liGet(`/dmpSegments?q=account&account=${encodeURIComponent(account)}`, t.accessToken);
   const text = await res.text();
-  if (!res.ok) return NextResponse.json({ step: "list", status: res.status, error: text.slice(0, 600) }, { status: 502 });
+  if (!res.ok) return NextResponse.json({ step: "list", status: res.status, error: text.slice(0, 600), ...hint403(res.status) }, { status: 502 });
 
   let elements: DmpSegment[] = [];
   try {
@@ -67,7 +76,7 @@ export async function POST(req: NextRequest) {
   );
   if (!createRes.ok) {
     return NextResponse.json(
-      { step: "create", status: createRes.status, error: (await createRes.text()).slice(0, 600) },
+      { step: "create", status: createRes.status, error: (await createRes.text()).slice(0, 600), ...hint403(createRes.status) },
       { status: 502 }
     );
   }
@@ -86,7 +95,7 @@ export async function POST(req: NextRequest) {
       const upRes = await liPost(`/dmpSegments/${segmentId}/users`, { elements: batch }, t.accessToken);
       if (!upRes.ok) {
         return NextResponse.json(
-          { step: "upload", segmentId, uploaded, status: upRes.status, error: (await upRes.text()).slice(0, 600) },
+          { step: "upload", segmentId, uploaded, status: upRes.status, error: (await upRes.text()).slice(0, 600), ...hint403(upRes.status) },
           { status: 502 }
         );
       }

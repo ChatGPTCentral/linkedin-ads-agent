@@ -28,13 +28,22 @@ customer-exclusion / predictive audiences. Campaigns are always created
    Manager and a **customer-exclusion** list (paste purchaser emails → hashed),
    then use **Target / Exclude** on the Saved-audiences segments.
 
-> Scopes: conversions run on the existing `r_ads`/`rw_ads`/`rw_dmp_segments`. If
-> `/conversions` returns 403, add `rw_conversions` to `LINKEDIN.scopes` and
-> **Disconnect → Connect** to re-consent (confirm the app has the scope first).
+> Scopes: conversions run on the existing `r_ads`/`rw_ads`. If `/conversions`
+> returns 403, add `rw_conversions` to `LINKEDIN.scopes` and **Disconnect →
+> Connect** to re-consent (confirm the app has the scope first).
+> **Matched Audiences (`/audiences`, `/predictive`) need `rw_dmp_segments`,
+> which the LinkedIn app is NOT granted yet** — those routes return a 403 with
+> a hint until the permission is requested on developer.linkedin.com and the
+> scope is added back to `LINKEDIN.scopes`. Never request an ungranted scope:
+> LinkedIn hard-fails the whole consent screen ("Bummer, something went wrong").
 
 ## 1. LinkedIn developer app
-- App must have the **Advertising API** product approved, with scopes
-  `r_ads`, `rw_ads`, `r_ads_reporting` (you confirmed full `rw_ads`).
+- App: **AI Central Media (Advertising API)**, client id `78evqi1gp64fub`, with
+  the **Advertising API** product approved. Granted scopes we request:
+  `r_ads`, `rw_ads`, `r_ads_reporting`, plus `r_organization_social` and
+  `r_organization_admin` (org posts + page analytics — feed intelligence).
+  Pending grant: `rw_dmp_segments` (Matched Audiences) — request it, then add
+  it back to `LINKEDIN.scopes` and re-consent.
 - Under **Auth**, add Authorized redirect URLs:
   - `http://localhost:3000/api/linkedin/callback` (local)
   - `https://<your-domain>/api/linkedin/callback` (production)

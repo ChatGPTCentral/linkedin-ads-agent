@@ -45,6 +45,11 @@ export async function POST(req: NextRequest) {
         step: "create",
         status: res.status,
         error: text.slice(0, 600),
+        ...(res.status === 403
+          ? {
+              hint: "Missing scope rw_dmp_segments (Matched Audiences). Request it for the app on developer.linkedin.com, add it back to LINKEDIN.scopes, then Disconnect → Connect to re-consent.",
+            }
+          : {}),
         note: "Predictive Audiences may require LinkedIn's Matched Audiences private API access. Fallback: Campaign Manager → Audiences → Create → Predictive → source = this segment / a conversion, then target it via the 'Target' action.",
       },
       { status: 502 }

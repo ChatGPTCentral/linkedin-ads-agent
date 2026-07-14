@@ -29,8 +29,12 @@ export const LINKEDIN = {
   /** Versioned REST API (YYYYMM). Self-correcting so it can't go stale. */
   version: resolveVersion(process.env.LINKEDIN_API_VERSION),
   restliVersion: "2.0.0",
-  /** Scopes: read ads, write ads (create campaigns), reporting, basic profile, manage DMP segments (audiences). */
-  scopes: ["r_ads", "rw_ads", "r_ads_reporting", "r_basicprofile", "rw_dmp_segments"],
+  /** Scopes: read/write ads (campaigns), reporting, org posts + page analytics (feed intelligence).
+   *  Only request scopes GRANTED to the LinkedIn app — requesting an ungranted one makes LinkedIn
+   *  hard-fail the whole consent screen ("Bummer, something went wrong"). rw_dmp_segments (Matched
+   *  Audiences) is not granted yet: request it on developer.linkedin.com, add it back here, and
+   *  Disconnect → Connect to re-consent. */
+  scopes: ["r_ads", "rw_ads", "r_ads_reporting", "r_organization_social", "r_organization_admin"],
 } as const;
 
 // Default ad account, so the user never has to enter it. Override with the
