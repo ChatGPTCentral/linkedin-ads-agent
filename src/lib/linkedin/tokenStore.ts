@@ -1,39 +1,15 @@
-import crypto from "node:crypto";
 import { cookies } from "next/headers";
+import { seal, open } from "@/lib/tokenCrypto";
 import type { StoredToken } from "./types";
 
 // Tokens are stored in an httpOnly, encrypted (AES-256-GCM) cookie. Simple and
 // self-contained for a single-operator internal tool — no database required.
 // Upgrade path: move to a Supabase table if multiple operators need shared state.
+// seal/open live in @/lib/tokenCrypto (shared with the Google integration);
+// re-exported here so existing importers keep working.
+export { seal, open };
 
 export const TOKEN_COOKIE = "li_token";
-
-function keyBytes(encKey: string): Buffer {
-  return crypto.createHash("sha256").update(encKey).digest();
-}
-
-export function seal(obj: unknown, encKey: string): string {
-  const iv = crypto.randomBytes(12);
-  const cipher = crypto.createCipheriv("aes-256-gcm", keyBytes(encKey), iv);
-  const ct = Buffer.concat([cipher.update(Buffer.from(JSON.stringify(obj), "utf8")), cipher.final()]);
-  const tag = cipher.getAuthTag();
-  return Buffer.concat([iv, tag, ct]).toString("base64url");
-}
-
-export function open<T>(s: string, encKey: string): T | null {
-  try {
-    const buf = Buffer.from(s, "base64url");
-    const iv = buf.subarray(0, 12);
-    const tag = buf.subarray(12, 28);
-    const ct = buf.subarray(28);
-    const d = crypto.createDecipheriv("aes-256-gcm", keyBytes(encKey), iv);
-    d.setAuthTag(tag);
-    const pt = Buffer.concat([d.update(ct), d.final()]);
-    return JSON.parse(pt.toString("utf8")) as T;
-  } catch {
-    return null;
-  }
-}
 
 export async function saveToken(t: StoredToken, encKey: string): Promise<void> {
   const c = await cookies();
