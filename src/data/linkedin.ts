@@ -109,7 +109,7 @@ export const AUDIENCES: LinkedInAudience[] = [
     derivedFrom: [
       "Geo: US 53% + UK/CA/AU lead converters",
       "Seniority: Founder/IC/C-Suite/Manager skew (job-level data)",
-      "Goals: build workflows (13% conv), choose tools, prompt engineering",
+      "Goals: build workflows (14% conv), choose tools, prompt engineering",
     ],
   },
   {
@@ -134,9 +134,9 @@ export const AUDIENCES: LinkedInAudience[] = [
       "Finance/Fintech buyers show the highest LTV but are a small sample — treat as a hypothesis to test.",
     ],
     derivedFrom: [
-      "Premium-LTV geos: Switzerland, Israel, Portugal, US",
+      "Premium-LTV geos: Israel ($77), Portugal ($66), Switzerland ($60)",
       "Seniority: Founder + C-Suite a third of job-level reporters",
-      "Managers show the highest converter LTV",
+      "Highest LTV signals: Finance vertical ($78) + prompt-engineering intent ($75)",
     ],
   },
   {
@@ -175,7 +175,7 @@ export const AD_COPY: AdCopyVariant[] = [
       "Stop duct-taping AI tools together. The Ultimate AI Library puts the best AI tools, prompts and workflows in one curated place — so you ship faster.",
     headline: "Your entire AI stack, curated",
     cta: "Learn more",
-    rationale: '"Develop AI products/workflows" is the #1 goal and best-converting (13.3%).',
+    rationale: '"Develop AI products/workflows" is the #1 goal and best-converting (13.8%).',
   },
   {
     id: "prompt-packs",
@@ -195,7 +195,7 @@ export const AD_COPY: AdCopyVariant[] = [
       "Get your team fluent in AI — fast. One subscription, tutorials, tool comparisons and ready-to-use workflows your whole team can apply today.",
     headline: "Upskill your team on AI",
     cta: "Sign up",
-    rationale: '"Train my team on AI" converts at 12.9%; managers show the highest LTV.',
+    rationale: '"Train my team on AI" converts at 12.9% — a strong, higher-ACV B2B angle.',
   },
   {
     id: "lifetime",

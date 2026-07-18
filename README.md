@@ -15,7 +15,7 @@ Supabase `submissions` table with read-only `GROUP BY` aggregates.
 - **Aggregated & anonymized** — this repo stores only counts, percentages and
   averages. No names, emails, or IP addresses are ever committed.
 - Stripe conversions are already joined into the pipeline, so the ICP is built
-  from **1,624 actual converters** ($76k tracked LTV), not guesses.
+  from **1,694 actual converters** ($81k tracked LTV), not guesses.
 
 ## What's inside
 
@@ -29,14 +29,14 @@ Supabase `submissions` table with read-only `GROUP BY` aggregates.
 
 ## Key findings (from the real data)
 
-- **Geo:** US is 53% of converters; highest-LTV markets are Switzerland ($60),
-  Israel ($62) and Portugal ($66); India ($24) and Brazil ($32) are
+- **Geo:** US is 53% of converters; highest-LTV markets are Israel ($77),
+  Portugal ($66) and Switzerland ($60); India ($23) and Brazil ($35) are
   high-volume but low-value → excluded from the high-CPM campaigns.
-- **Seniority:** skews Individual Contributor / Founder / C-Suite; managers
-  convert at the highest LTV ($58).
-- **Motivation:** "Develop AI products/workflows" (13% conv) and "Train my team
-  on AI" (13%) convert best; "Prompt engineering" drives the highest LTV.
-- **Economics:** ~$47 average LTV on a high-CPM platform → spend leans to the
+- **Seniority:** skews Individual Contributor / Founder / C-Suite; ICs and
+  managers convert at the strongest job-level LTV (~$46).
+- **Motivation:** "Develop AI products/workflows" (14% conv) and "Train my team
+  on AI" (13%) convert best; "Prompt engineering" drives the highest LTV ($75).
+- **Economics:** ~$48 average LTV on a high-CPM platform → spend leans to the
   yearly/lifetime offers and premium markets.
 
 ## Tech

@@ -7,14 +7,14 @@ output and hand-baking the results. No row-level data is exported or committed.
 ## Source
 
 - Supabase project: **AI Central // Quiz (Prod)** (`jcciwvaqbkxwtufvtiog`)
-- Table: `public.submissions` (2,768 rows; the `ai-central-quiz` pipeline output)
+- Table: `public.submissions` (3,225 rows; the `ai-central-quiz` pipeline output)
 - Already contains: Apollo enrichment, Stripe conversion join
   (`lifetime_value_usd`, products, subscription tier), self-reported quiz
   fields, and CRM segment/stage/persona classification.
 
 ## Definitions
 
-- **Converter** = `archived_at IS NULL AND lifetime_value_usd > 0` (1,624 rows).
+- **Converter** = `archived_at IS NULL AND lifetime_value_usd > 0` (1,694 rows).
 - Empty strings are treated as missing (`NULLIF(col,'')`).
 
 ## Aggregates pulled (read-only `GROUP BY`)
