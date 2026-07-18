@@ -21,7 +21,7 @@ customer-exclusion / predictive audiences. Campaigns are always created
 3. Confirm the tag shows **Active** in Campaign Manager (first signal up to ~24h).
 4. Create conversions (**Create PURCHASE / SIGN_UP conversion**) and, in Campaign
    Manager, tie each to a landing-page URL rule (purchase-confirmation → PURCHASE,
-   trial/subscribe → SIGN_UP). Default conversion value = avg LTV ($46.86).
+   trial/subscribe → SIGN_UP). Default conversion value = avg LTV ($47.74).
 5. When creating a campaign, keep **Optimize for: Purchases** and pick the
    conversion so LinkedIn optimizes toward payers.
 6. Once the tag has data, build a **website-retargeting** audience in Campaign
