@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import Link from "next/link";
 import "./globals.css";
 import { Nav } from "@/components/Nav";
@@ -6,9 +6,16 @@ import { seed } from "@/data/seed";
 import { SAFE_MODE } from "@/lib/safe";
 
 export const metadata: Metadata = {
-  title: "AI Central — LinkedIn Ads Campaign Designer",
+  title: "AI Central — Campaign Cockpit",
   description:
-    "Design high-converting LinkedIn Ads from real Stripe conversion data: ICP analysis, audience targeting, copy, creative & landing-page briefs.",
+    "Live LinkedIn Ads cockpit: real-time campaign health, spend & ROAS, one-tap pause/resume — plus the ICP insights and connections behind it.",
+};
+
+// Mobile-first: render edge-to-edge on iPhone with no zoom-out.
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
