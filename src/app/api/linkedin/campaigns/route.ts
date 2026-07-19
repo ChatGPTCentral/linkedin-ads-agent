@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getValidToken, liPost, liPut } from "@/lib/linkedin/client";
+import { getValidToken, liGet, liPost, liPut } from "@/lib/linkedin/client";
 import { DEFAULT_AD_ACCOUNT_URN } from "@/lib/linkedin/config";
 import { AUDIENCES, AD_COPY } from "@/data/linkedin";
 import { resolveAudienceFacets, resolveExcludedLocations, buildTargetingCriteria } from "@/lib/linkedin/targeting";
@@ -10,6 +10,82 @@ export const dynamic = "force-dynamic";
 /** LinkedIn returns the created entity id in a response header. */
 function createdId(res: Response): string | null {
   return res.headers.get("x-restli-id") || res.headers.get("x-linkedin-id");
+}
+
+// ---------------------------------------------------------------------------
+// GET (audit) types + helpers. Read the live campaign config back from LinkedIn
+// so we can verify what was actually set — especially the two settings that
+// silently default the "wrong" way: LinkedIn Audience Network (offsiteDelivery)
+// and Audience Expansion. Also surfaces manual bid, budget, and whether the
+// campaign truly TARGETS a matched audience (retargeting) vs not.
+// ---------------------------------------------------------------------------
+type FacetMap = Record<string, string[]>;
+interface TargetingCriteria {
+  include?: { and?: { or?: FacetMap }[] };
+  exclude?: { or?: FacetMap };
+}
+interface RawMoney {
+  amount?: string;
+  currencyCode?: string;
+}
+interface RawCampaign {
+  id?: number | string;
+  name?: string;
+  status?: string;
+  type?: string;
+  format?: string;
+  costType?: string;
+  objectiveType?: string;
+  optimizationTargetType?: string;
+  unitCost?: RawMoney;
+  dailyBudget?: RawMoney;
+  totalBudget?: RawMoney;
+  runSchedule?: { start?: number; end?: number };
+  offsiteDeliveryEnabled?: boolean;
+  audienceExpansionEnabled?: boolean;
+  campaignGroup?: string;
+  targetingCriteria?: TargetingCriteria;
+}
+
+// Contact lists / retargeting audiences live under these facets; their values
+// are urn:li:adSegment / dmpSegment URNs. Presence in INCLUDE = true retargeting.
+const MATCHED_AUDIENCE_FACETS = [
+  "urn:li:adTargetingFacet:audienceMatchingSegments",
+  "urn:li:adTargetingFacet:dynamicSegments",
+];
+
+function mergeOr(out: FacetMap, or: FacetMap | undefined): void {
+  if (!or) return;
+  for (const [facet, values] of Object.entries(or)) out[facet] = (out[facet] ?? []).concat(values ?? []);
+}
+function flattenInclude(inc: TargetingCriteria["include"]): FacetMap {
+  const out: FacetMap = {};
+  for (const g of inc?.and ?? []) mergeOr(out, g.or);
+  return out;
+}
+function flattenExclude(exc: TargetingCriteria["exclude"]): FacetMap {
+  const out: FacetMap = {};
+  mergeOr(out, exc?.or);
+  return out;
+}
+function humanizeFacets(m: FacetMap): FacetMap {
+  return Object.fromEntries(Object.entries(m).map(([k, v]) => [k.replace("urn:li:adTargetingFacet:", ""), v]));
+}
+function summarizeTargeting(tc: TargetingCriteria | undefined) {
+  const includeRaw = flattenInclude(tc?.include);
+  const excludeRaw = flattenExclude(tc?.exclude);
+  return {
+    include: humanizeFacets(includeRaw),
+    exclude: humanizeFacets(excludeRaw),
+    matchedAudienceSegments: {
+      include: MATCHED_AUDIENCE_FACETS.flatMap((f) => includeRaw[f] ?? []),
+      exclude: MATCHED_AUDIENCE_FACETS.flatMap((f) => excludeRaw[f] ?? []),
+    },
+  };
+}
+/** Tri-state: true/false when LinkedIn returns the flag, null when it's absent. */
+function triState(v: boolean | undefined): boolean | null {
+  return typeof v === "boolean" ? v : null;
 }
 
 // Creates a Campaign Group + Campaign in PAUSED/DRAFT state. Never launches
@@ -127,4 +203,82 @@ export async function POST(req: NextRequest) {
     unresolvedFacets: include.flatMap((f) => f.unresolved ?? []),
     targetingCriteria,
   });
+}
+
+// GET: read-only auditor. Lists the account's campaigns with the config that
+// matters for a launch review — objective, manual bid, budget, Audience-Network
+// + Audience-Expansion flags, targeting (incl. matched-audience retargeting),
+// and attached conversions. Never mutates anything.
+export async function GET(req: NextRequest) {
+  const account = req.nextUrl.searchParams.get("account") || DEFAULT_AD_ACCOUNT_URN;
+  const accountId = account.split(":").pop() ?? account;
+
+  const t = await getValidToken();
+  if ("error" in t) return NextResponse.json({ error: t.error }, { status: 401 });
+
+  const res = await liGet(`/adAccounts/${accountId}/adCampaigns?q=search&count=100`, t.accessToken);
+  const text = await res.text();
+  if (!res.ok) {
+    return NextResponse.json({ step: "list", status: res.status, error: text.slice(0, 600) }, { status: 502 });
+  }
+  let elements: RawCampaign[] = [];
+  try {
+    elements = (JSON.parse(text) as { elements?: RawCampaign[] }).elements ?? [];
+  } catch {
+    return NextResponse.json({ error: "bad_json_from_linkedin", sample: text.slice(0, 300) }, { status: 502 });
+  }
+
+  const LIVE = new Set(["ACTIVE", "PAUSED", "DRAFT"]);
+  const campaigns = await Promise.all(
+    elements.map(async (c) => {
+      const urn = c.id != null ? `urn:li:sponsoredCampaign:${c.id}` : null;
+      const targeting = summarizeTargeting(c.targetingCriteria);
+
+      // Best-effort conversion associations (only for live campaigns; never
+      // fail the whole response on a hiccup).
+      let conversions: unknown = null;
+      if (urn && LIVE.has(String(c.status))) {
+        try {
+          const cr = await liGet(`/campaignConversions?q=campaign&campaign=${encodeURIComponent(urn)}`, t.accessToken);
+          if (cr.ok) {
+            const cj = (await cr.json()) as { elements?: { conversion?: string }[] };
+            conversions = (cj.elements ?? []).map((e) => e.conversion).filter(Boolean);
+          } else {
+            conversions = { status: cr.status };
+          }
+        } catch (e) {
+          conversions = { error: (e as Error).message };
+        }
+      } else {
+        conversions = { skipped: c.status ?? null };
+      }
+
+      return {
+        id: c.id ?? null,
+        urn,
+        name: c.name ?? null,
+        status: c.status ?? null,
+        type: c.type ?? null,
+        format: c.format ?? null,
+        objectiveType: c.objectiveType ?? null,
+        optimizationTargetType: c.optimizationTargetType ?? null,
+        costType: c.costType ?? null,
+        bid: c.unitCost ?? null,
+        dailyBudget: c.dailyBudget ?? null,
+        totalBudget: c.totalBudget ?? null,
+        runSchedule: c.runSchedule ?? null,
+        campaignGroup: c.campaignGroup ?? null,
+        conversions,
+        // Quick verdicts against the stated launch intent.
+        audit: {
+          audienceNetworkOn: triState(c.offsiteDeliveryEnabled), // want false (no LinkedIn Audience Network)
+          audienceExpansionOn: triState(c.audienceExpansionEnabled), // want false (keep the ICP tight)
+          targetsMatchedAudience: targeting.matchedAudienceSegments.include.length > 0, // want true for warm retargeting
+        },
+        targeting,
+      };
+    })
+  );
+
+  return NextResponse.json({ ok: true, account, count: campaigns.length, campaigns });
 }
