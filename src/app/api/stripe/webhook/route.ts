@@ -2,13 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { getStripeWebhookSecret } from "@/lib/stripe/config";
 import { verifyStripeSignature, extractPurchase } from "@/lib/stripe/webhook";
 import { getGa4MpEnv, sendGa4Purchase, clientIdFor } from "@/lib/google/ga4mp";
+import { getCapiEnv, sendLinkedInConversion } from "@/lib/linkedin/capi";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 // Stripe webhook → the server-side conversion loop. Catches every paid purchase
-// at the source and reports real revenue to GA4 (Measurement Protocol). LinkedIn
-// Conversions API is added next (Increment 2, needs rw_conversions).
+// at the source and reports real revenue to BOTH GA4 (Measurement Protocol) and
+// LinkedIn (Conversions API, with a SHA-256-hashed email) — the durable,
+// ad-blocker-proof half of the funnel that closes true ROAS.
 export async function POST(req: NextRequest) {
   const secret = getStripeWebhookSecret();
   if (!secret) {
@@ -60,7 +62,26 @@ export async function POST(req: NextRequest) {
     out.ga4 = { skipped: "set GA4_MP_MEASUREMENT_ID + GA4_MP_API_SECRET" };
   }
 
-  // Increment 2 (LinkedIn Conversions API) plugs in here once rw_conversions is granted.
+  // → LinkedIn Conversions API (real revenue → true ROAS + value-based bidding).
+  // Env-gated: no-op until LINKEDIN_CAPI_ACCESS_TOKEN + LINKEDIN_CAPI_CONVERSION_URN
+  // are set. eventId = Stripe txn id → de-dups with the Insight Tag pixel. A CAPI
+  // hiccup must NOT make Stripe retry, so we still return 200 with the result.
+  const capi = getCapiEnv();
+  if (capi) {
+    try {
+      out.linkedin = await sendLinkedInConversion(capi, {
+        email: purchase.email,
+        valueUsd: purchase.valueUsd,
+        currency: purchase.currency,
+        transactionId: purchase.transactionId,
+        happenedAtMs: Date.now(),
+      });
+    } catch (e) {
+      out.linkedin = { ok: false, error: (e as Error).message };
+    }
+  } else {
+    out.linkedin = { skipped: "set LINKEDIN_CAPI_ACCESS_TOKEN + LINKEDIN_CAPI_CONVERSION_URN" };
+  }
 
   return NextResponse.json(out);
 }
