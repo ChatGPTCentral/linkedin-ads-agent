@@ -88,8 +88,11 @@ function triState(v: boolean | undefined): boolean | null {
   return typeof v === "boolean" ? v : null;
 }
 
-// Creates a Campaign Group + Campaign in PAUSED/DRAFT state. Never launches
-// spend — a human reviews targeting + adds creative in Campaign Manager first.
+// Creates an ACTIVE campaign group (an empty container never spends) holding a
+// PAUSED campaign. Never launches spend — spend is gated at the campaign level,
+// and a human reviews targeting + adds creative in Campaign Manager first.
+// NOTE: LinkedIn rejects a PAUSED campaign under a DRAFT group
+// (CONDITIONAL_INVALID_VALUE), so the group must be ACTIVE, not DRAFT.
 export async function POST(req: NextRequest) {
   const {
     audienceId,
@@ -125,13 +128,14 @@ export async function POST(req: NextRequest) {
   // Satisfies LinkedIn's required runSchedule field.
   const startAt = Date.now() + 24 * 60 * 60 * 1000;
 
-  // 1) Campaign group (DRAFT)
+  // 1) Campaign group (ACTIVE container — the campaign inside stays PAUSED, so
+  //    nothing spends; LinkedIn forbids a PAUSED campaign under a DRAFT group).
   const cgRes = await liPost(
     `/adAccounts/${accountId}/adCampaignGroups`,
     {
       account,
       name: `[Designer] ${audience.name}`,
-      status: "DRAFT",
+      status: "ACTIVE",
       runSchedule: { start: startAt },
     },
     t.accessToken
