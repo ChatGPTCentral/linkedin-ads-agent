@@ -27,6 +27,17 @@ function sha256Email(email: string): string {
   return crypto.createHash("sha256").update(email.trim().toLowerCase()).digest("hex");
 }
 
+/**
+ * The Conversions API `conversion` field wants the `urn:lla:llaPartnerConversion`
+ * namespace — NOT `urn:li:conversion` (that prefix is for pixel/campaign
+ * associations and 422s here). Accept any of: the llaPartnerConversion URN, a
+ * urn:li:conversion URN, or a bare numeric id, and always emit the right one.
+ */
+export function normalizeConversionUrn(v: string): string {
+  const id = v.match(/(\d+)\s*$/)?.[1];
+  return id ? `urn:lla:llaPartnerConversion:${id}` : v;
+}
+
 export interface CapiResult {
   ok: boolean;
   status?: number;
@@ -47,7 +58,7 @@ export async function sendLinkedInConversion(
   if (!userIds.length) return { ok: false, error: "no_user_identifier (need a hashed email)" };
 
   const body = {
-    conversion: env.conversionUrn,
+    conversion: normalizeConversionUrn(env.conversionUrn),
     conversionHappenedAt: p.happenedAtMs,
     conversionValue: {
       currencyCode: (p.currency || "USD").toUpperCase(),
