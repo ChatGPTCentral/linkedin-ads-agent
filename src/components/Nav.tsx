@@ -5,20 +5,22 @@ import { usePathname } from "next/navigation";
 import { cn } from "./ui";
 
 const LINKS = [
-  { href: "/", label: "Dashboard" },
-  { href: "/icp", label: "ICP Profile" },
-  { href: "/audiences", label: "Audiences" },
-  { href: "/brief", label: "Campaign Brief" },
-  { href: "/connect", label: "LinkedIn" },
-  { href: "/methodology", label: "Methodology" },
+  { href: "/", label: "Cockpit" },
+  { href: "/settings", label: "Settings" },
 ];
+
+// Settings sub-routes still highlight the Settings tab.
+const SETTINGS_ROUTES = ["/settings", "/insights", "/icp", "/audiences", "/brief", "/connect", "/methodology"];
 
 export function Nav() {
   const pathname = usePathname();
   return (
     <nav className="flex flex-wrap items-center gap-1">
       {LINKS.map((l) => {
-        const active = l.href === "/" ? pathname === "/" : pathname.startsWith(l.href);
+        const active =
+          l.href === "/"
+            ? pathname === "/"
+            : SETTINGS_ROUTES.some((r) => pathname === r || pathname.startsWith(r + "/"));
         return (
           <Link
             key={l.href}
