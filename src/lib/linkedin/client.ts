@@ -52,3 +52,16 @@ export function liPut(path: string, body: unknown, token: string): Promise<Respo
     body: JSON.stringify(body),
   });
 }
+
+/**
+ * Rest.li PARTIAL_UPDATE (LinkedIn does these as POST + X-RestLi-Method header,
+ * body { patch: { $set: {...} } }). Used to rename campaigns/groups and flip
+ * status (PAUSED / ACTIVE / ARCHIVED) without touching the rest of the entity.
+ */
+export function liPatch(path: string, set: Record<string, unknown>, token: string): Promise<Response> {
+  return fetch(`${LINKEDIN.apiBase}${path}`, {
+    method: "POST",
+    headers: { ...liHeaders(token), "X-RestLi-Method": "PARTIAL_UPDATE" },
+    body: JSON.stringify({ patch: { $set: set } }),
+  });
+}

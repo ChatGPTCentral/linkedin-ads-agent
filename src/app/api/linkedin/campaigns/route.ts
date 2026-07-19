@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getValidToken, liGet, liPost, liPut } from "@/lib/linkedin/client";
+import { getValidToken, liGet, liPost, liPut, liPatch } from "@/lib/linkedin/client";
 import { DEFAULT_AD_ACCOUNT_URN } from "@/lib/linkedin/config";
 import { AUDIENCES, AD_COPY } from "@/data/linkedin";
 import { resolveAudienceFacets, resolveExcludedLocations, buildTargetingCriteria } from "@/lib/linkedin/targeting";
@@ -285,4 +285,43 @@ export async function GET(req: NextRequest) {
   );
 
   return NextResponse.json({ ok: true, account, count: campaigns.length, campaigns });
+}
+
+// PATCH: rename + change status (PAUSED / ACTIVE / ARCHIVED) on campaigns and/or
+// campaign groups, batched. Used to apply a naming convention and archive/clean
+// up without rebuilding anything. Body:
+//   { updates: [{ type: "campaign"|"group", id, name?, status? }, ...], account? }
+export async function PATCH(req: NextRequest) {
+  const { account: acct, updates } = (await req.json()) as {
+    account?: string;
+    updates?: { type?: "campaign" | "group"; id: number | string; name?: string; status?: string }[];
+  };
+  if (!updates?.length) return NextResponse.json({ error: "no_updates" }, { status: 400 });
+
+  const account = acct || DEFAULT_AD_ACCOUNT_URN;
+  const accountId = account.split(":").pop() ?? account;
+
+  const t = await getValidToken();
+  if ("error" in t) return NextResponse.json({ error: t.error }, { status: 401 });
+
+  const results = await Promise.all(
+    updates.map(async (u) => {
+      const set: Record<string, unknown> = {};
+      if (typeof u.name === "string" && u.name.trim()) set.name = u.name.trim();
+      if (typeof u.status === "string" && u.status.trim()) set.status = u.status.trim().toUpperCase();
+      if (!Object.keys(set).length) return { id: u.id, ok: false, error: "nothing_to_update" };
+
+      const coll = u.type === "group" ? "adCampaignGroups" : "adCampaigns";
+      try {
+        const res = await liPatch(`/adAccounts/${accountId}/${coll}/${u.id}`, set, t.accessToken);
+        return res.ok
+          ? { id: u.id, type: u.type ?? "campaign", ok: true, applied: set }
+          : { id: u.id, type: u.type ?? "campaign", ok: false, status: res.status, error: (await res.text()).slice(0, 300) };
+      } catch (e) {
+        return { id: u.id, type: u.type ?? "campaign", ok: false, error: (e as Error).message };
+      }
+    })
+  );
+
+  return NextResponse.json({ ok: true, account, results });
 }
