@@ -1,4 +1,23 @@
 import type { SeedBundle } from "@/types";
+import generated from "./insights.generated.json";
+
+// Volatile aggregates refreshed daily by scripts/refresh-seed.mjs (GitHub
+// Actions) → insights.generated.json. Curated ICP breakdowns, personas,
+// coverage and source mix stay hand-reviewed. Each field falls back to the
+// baked literal below if the generated file ever lacks a value.
+const G = generated as Partial<{
+  generatedAt: string;
+  totalRecords: number;
+  converters: number;
+  leads: number;
+  totalLtv: number;
+  avgLtv: number;
+  medianLtv: number;
+  p90Ltv: number;
+  p95Ltv: number;
+  maxLtv: number;
+  timeline: { ym: string; newCustomers: number; revenue: number }[];
+}>;
 
 // =============================================================================
 // AGGREGATED, ANONYMIZED converter data for AI Central ("The Ultimate AI
@@ -11,12 +30,12 @@ import type { SeedBundle } from "@/types";
 
 export const seed: SeedBundle = {
   meta: {
-    generatedAt: "2026-07-15",
+    generatedAt: G.generatedAt ?? "2026-07-15",
     source: "AI Central CRM enrichment pipeline (Quiz Prod) — submissions",
     currency: "USD",
-    totalRecords: 3225,
-    converters: 1694,
-    totalLtv: 80875.72,
+    totalRecords: G.totalRecords ?? 3225,
+    converters: G.converters ?? 1694,
+    totalLtv: G.totalLtv ?? 80875.72,
     enrichmentCaveat:
       "Buyers overwhelmingly use personal email, so deep firmographic enrichment (exact job title, company) is only partial. Geography, conversion value, self-reported goals, and seniority are the reliable signals — and they are what drive the audience design.",
     coverage: [
@@ -36,21 +55,21 @@ export const seed: SeedBundle = {
   },
 
   conversions: {
-    converters: 1694,
-    leads: 1531,
-    totalRecords: 3225,
-    totalLtv: 80875.72,
-    avgLtv: 47.74,
-    medianLtv: 49.5,
-    p90Ltv: 68.54,
-    p95Ltv: 99.25,
-    maxLtv: 322.43,
+    converters: G.converters ?? 1694,
+    leads: G.leads ?? 1531,
+    totalRecords: G.totalRecords ?? 3225,
+    totalLtv: G.totalLtv ?? 80875.72,
+    avgLtv: G.avgLtv ?? 47.74,
+    medianLtv: G.medianLtv ?? 49.5,
+    p90Ltv: G.p90Ltv ?? 68.54,
+    p95Ltv: G.p95Ltv ?? 99.25,
+    maxLtv: G.maxLtv ?? 322.43,
     bySource: [
       { key: "stripe", label: "Stripe import", rows: 1996, converters: 1590 },
       { key: "legacy", label: "Legacy / quiz", rows: 1225, converters: 104 },
       { key: "survey", label: "New survey", rows: 4, converters: 0 },
     ],
-    timeline: [
+    timeline: G.timeline ?? [
       { ym: "2023-11", newCustomers: 11, revenue: 616.52 },
       { ym: "2023-12", newCustomers: 21, revenue: 1187.13 },
       { ym: "2024-01", newCustomers: 34, revenue: 2489.23 },
