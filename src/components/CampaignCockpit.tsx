@@ -77,6 +77,7 @@ export function CampaignCockpit() {
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [perf, setPerf] = useState<Perf[]>([]);
   const [roasEstimated, setRoasEstimated] = useState(false);
+  const [quiz, setQuiz] = useState<{ total: number; skipped?: string } | null>(null);
   const [connected, setConnected] = useState<boolean | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -116,6 +117,17 @@ export function CampaignCockpit() {
           /* analytics is best-effort; config still renders */
         }
       }
+
+      // Quiz completions from the ads (cross-source — uses the app's own quiz-DB
+      // credential, not the LinkedIn cookie). Powers cost-per-quiz.
+      try {
+        const qr = await fetch("/api/quiz/attribution?days=30", { cache: "no-store" });
+        const qd = await qr.json();
+        setQuiz(qd.ok ? { total: qd.total ?? 0 } : { total: 0, skipped: qd.skipped ?? qd.error });
+      } catch {
+        /* non-fatal */
+      }
+
       const t = Date.now();
       setUpdated(t);
       setNow(t);
@@ -169,6 +181,11 @@ export function CampaignCockpit() {
   );
   const aggRoas = agg.spend > 0 ? agg.revenue / agg.spend : null;
   const hasData = scoped.length > 0;
+
+  // Cost per quiz completion (the "partial conversion"): LinkedIn spend on these
+  // campaigns ÷ ad-attributed quiz-takers from the quiz DB.
+  const quizTakers = quiz && !quiz.skipped ? quiz.total : null;
+  const costPerQuiz = quizTakers && quizTakers > 0 && agg.spend > 0 ? agg.spend / quizTakers : null;
 
   async function changeStatus(c: Campaign, status: "PAUSED" | "ACTIVE") {
     const verb = status === "PAUSED" ? "Pause" : "Resume";
@@ -236,9 +253,14 @@ export function CampaignCockpit() {
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             <Stat label="Spend" value={hasData ? usd(agg.spend, { cents: true }) : "—"} sub="these campaigns" accent />
             <Stat label="Clicks" value={hasData ? num(agg.clicks) : "—"} sub="to the quiz" />
-            <Stat label="Conversions" value={hasData ? num(agg.conversions) : "—"} sub="on-platform" />
-            <Stat label="ROAS" value={hasData ? roasLabel(aggRoas) : "—"} sub={roasEstimated ? "est. (avg LTV)" : "actual value"} />
+            <Stat label="Quiz-takers" value={quizTakers != null ? num(quizTakers) : "—"} sub="from the ads · 30d" accent />
+            <Stat label="Cost / quiz" value={costPerQuiz != null ? usd(costPerQuiz, { cents: true }) : "—"} sub="partial conversion" />
           </div>
+          <p className="-mt-2 text-xs text-zinc-400">
+            Purchases {hasData ? num(agg.conversions) : "—"} · ROAS {hasData ? roasLabel(aggRoas) : "—"}
+            {roasEstimated ? " (est.)" : ""}
+            {quiz?.skipped ? " · set SUPABASE_DATABASE_URL in Vercel to light up cost-per-quiz" : ""}
+          </p>
 
           {/* Needs attention */}
           {allIssues.length > 0 && (
