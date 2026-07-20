@@ -36,10 +36,10 @@ type Perf = {
   conversions: number;
   clicks: number;
   impressions: number;
+  revenue: number;
   cpa: number | null;
   roas: number | null;
 };
-type Totals = { spend: number; conversions: number; revenue: number; cpa: number | null; roas: number | null };
 
 const LIVE = new Set(["ACTIVE", "PAUSED", "DRAFT"]);
 const REFRESH_MS = 60_000;
@@ -76,7 +76,6 @@ function issuesFor(c: Campaign): string[] {
 export function CampaignCockpit() {
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [perf, setPerf] = useState<Perf[]>([]);
-  const [totals, setTotals] = useState<Totals | null>(null);
   const [roasEstimated, setRoasEstimated] = useState(false);
   const [connected, setConnected] = useState<boolean | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -111,7 +110,6 @@ export function CampaignCockpit() {
           const ad = await ar.json();
           if (ad.ok) {
             setPerf(ad.computed ?? []);
-            setTotals(ad.totals ?? null);
             setRoasEstimated(!!ad.roasEstimated);
           }
         } catch {
@@ -156,6 +154,22 @@ export function CampaignCockpit() {
 
   const allIssues = campaigns.flatMap((c) => issuesFor(c).map((msg) => ({ name: c.name ?? String(c.id), msg })));
 
+  // Time-zero at the current campaigns: sum ONLY the live campaigns' rows so the
+  // pre-launch "era" (old/removed campaigns) never shows up in the top-line.
+  const liveUrns = new Set(campaigns.map((c) => c.urn).filter((u): u is string => !!u));
+  const scoped = perf.filter((p) => p.campaign && liveUrns.has(p.campaign));
+  const agg = scoped.reduce(
+    (a, p) => ({
+      spend: a.spend + p.spend,
+      clicks: a.clicks + p.clicks,
+      conversions: a.conversions + p.conversions,
+      revenue: a.revenue + (p.revenue ?? 0),
+    }),
+    { spend: 0, clicks: 0, conversions: 0, revenue: 0 }
+  );
+  const aggRoas = agg.spend > 0 ? agg.revenue / agg.spend : null;
+  const hasData = scoped.length > 0;
+
   async function changeStatus(c: Campaign, status: "PAUSED" | "ACTIVE") {
     const verb = status === "PAUSED" ? "Pause" : "Resume";
     if (typeof window !== "undefined" && !window.confirm(`${verb} “${c.name ?? c.id}”?`)) return;
@@ -181,7 +195,7 @@ export function CampaignCockpit() {
         <div>
           <h1 className="text-xl font-semibold tracking-tight text-zinc-900 sm:text-2xl">Campaign Cockpit</h1>
           <p className="mt-0.5 text-xs text-zinc-500">
-            Live from LinkedIn · updated {agoLabel}
+            Live · current campaigns only · updated {agoLabel}
             {refreshing && <span className="ml-1 text-indigo-500">· refreshing…</span>}
           </p>
         </div>
@@ -218,12 +232,12 @@ export function CampaignCockpit() {
 
       {connected && (
         <>
-          {/* Account summary (30d) */}
+          {/* Summary — scoped to the current campaigns only */}
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-            <Stat label="Spend · 30d" value={totals ? usd(totals.spend, { cents: true }) : "—"} accent />
-            <Stat label="Conversions" value={totals ? num(totals.conversions) : "—"} sub="30-day, on-platform" />
-            <Stat label="CPA" value={totals?.cpa != null ? usd(totals.cpa, { cents: true }) : "—"} />
-            <Stat label="ROAS" value={roasLabel(totals?.roas ?? null)} sub={roasEstimated ? "est. (avg LTV)" : "actual value"} />
+            <Stat label="Spend" value={hasData ? usd(agg.spend, { cents: true }) : "—"} sub="these campaigns" accent />
+            <Stat label="Clicks" value={hasData ? num(agg.clicks) : "—"} sub="to the quiz" />
+            <Stat label="Conversions" value={hasData ? num(agg.conversions) : "—"} sub="on-platform" />
+            <Stat label="ROAS" value={hasData ? roasLabel(aggRoas) : "—"} sub={roasEstimated ? "est. (avg LTV)" : "actual value"} />
           </div>
 
           {/* Needs attention */}
