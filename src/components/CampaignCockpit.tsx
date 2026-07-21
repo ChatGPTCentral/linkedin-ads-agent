@@ -40,6 +40,15 @@ type Perf = {
   cpa: number | null;
   roas: number | null;
 };
+type RecentItem = {
+  atMs: number;
+  utmRef: string;
+  score: number | null;
+  archetype: string | null;
+  goal: string | null;
+  isBuyer: boolean;
+  ltv: number;
+};
 
 const LIVE = new Set(["ACTIVE", "PAUSED", "DRAFT"]);
 const REFRESH_MS = 60_000;
@@ -78,6 +87,7 @@ export function CampaignCockpit() {
   const [perf, setPerf] = useState<Perf[]>([]);
   const [roasEstimated, setRoasEstimated] = useState(false);
   const [quiz, setQuiz] = useState<{ total: number; skipped?: string } | null>(null);
+  const [recent, setRecent] = useState<RecentItem[] | null>(null);
   const [connected, setConnected] = useState<boolean | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -128,6 +138,15 @@ export function CampaignCockpit() {
         /* non-fatal */
       }
 
+      // Recent ad-driven quiz activity (anonymized) — the conversion-diagnosis feed.
+      try {
+        const rr = await fetch("/api/quiz/recent?limit=12", { cache: "no-store" });
+        const rd = await rr.json();
+        if (rd.ok) setRecent(rd.items ?? []);
+      } catch {
+        /* non-fatal */
+      }
+
       const t = Date.now();
       setUpdated(t);
       setNow(t);
@@ -160,6 +179,15 @@ export function CampaignCockpit() {
   const ago =
     updated != null && now != null ? Math.max(0, Math.round((now - updated) / 1000)) : null;
   const agoLabel = ago == null ? "—" : ago < 5 ? "just now" : ago < 90 ? `${ago}s ago` : `${Math.round(ago / 60)}m ago`;
+
+  const relTime = (ms: number): string => {
+    if (now == null) return "";
+    const s = Math.max(0, Math.round((now - ms) / 1000));
+    if (s < 60) return `${s}s ago`;
+    if (s < 3600) return `${Math.round(s / 60)}m ago`;
+    if (s < 86400) return `${Math.round(s / 3600)}h ago`;
+    return `${Math.round(s / 86400)}d ago`;
+  };
 
   const perfFor = (urn: string | null): Perf | undefined =>
     urn ? perf.find((p) => p.campaign === urn) : undefined;
@@ -355,6 +383,28 @@ export function CampaignCockpit() {
               );
             })}
           </div>
+
+          {/* Recent ad-driven quiz activity — what each LinkedIn conversion maps to */}
+          {recent && recent.length > 0 && (
+            <Card title="Recent quiz activity" subtitle="From the ads — what each LinkedIn conversion maps to" className="!p-4">
+              <div className="divide-y divide-zinc-100">
+                {recent.map((it, i) => (
+                  <div key={i} className="flex items-center gap-2 py-2 text-sm">
+                    <Chip tone={it.utmRef === "cold" ? "indigo" : it.utmRef === "warm" ? "violet" : "zinc"}>
+                      {it.utmRef === "(none)" ? "li_ads" : it.utmRef}
+                    </Chip>
+                    {it.score != null && <span className="tabular-nums font-semibold text-zinc-800">{it.score}</span>}
+                    <span className="min-w-0 flex-1 truncate text-zinc-500">{it.archetype ?? it.goal ?? "completed the quiz"}</span>
+                    {it.isBuyer && <Chip tone="green">bought ${Math.round(it.ltv)}</Chip>}
+                    <span className="shrink-0 text-xs text-zinc-400">{relTime(it.atMs)}</span>
+                  </div>
+                ))}
+              </div>
+              <p className="mt-3 border-t border-zinc-100 pt-2 text-[11px] text-zinc-400">
+                Each completed quiz = a “Quiz Completed” conversion; a “bought” row = a purchase (CAPI) conversion. Anonymized — no personal data.
+              </p>
+            </Card>
+          )}
 
           <p className="pt-1 text-center text-[11px] text-zinc-400">
             Config is live from LinkedIn; performance is last-30-day and can lag a few hours. Conversions attach + creatives are managed in Campaign Manager.

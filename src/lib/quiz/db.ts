@@ -8,6 +8,10 @@ import postgres from "postgres";
 // prepare:false is required for the pgBouncer transaction pooler; max:1 keeps
 // each serverless invocation to a single short-lived connection.
 
+// utm_source value(s) your PAID LinkedIn ads carry. Keep to the paid value only
+// ("li_ads") — the bare "linkedin" source is organic posts and must not count.
+export const PAID_LINKEDIN_SOURCES = ["li_ads"];
+
 let client: ReturnType<typeof postgres> | null = null;
 
 export function getQuizDb(): ReturnType<typeof postgres> | null {
