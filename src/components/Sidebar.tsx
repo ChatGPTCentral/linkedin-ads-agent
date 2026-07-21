@@ -13,12 +13,8 @@ const I = (d: ReactElement) => (
 );
 const HomeIcon = () => I(<><path d="M3 12l9-9 9 9" /><path d="M5 10v10h14V10" /></>);
 const MapIcon = () => I(<><polygon points="1 6 8 3 16 6 23 3 23 18 16 21 8 18 1 21 1 6" /><line x1="8" y1="3" x2="8" y2="18" /><line x1="16" y1="6" x2="16" y2="21" /></>);
-const ChartIcon = () => I(<><line x1="4" y1="20" x2="4" y2="10" /><line x1="10" y1="20" x2="10" y2="4" /><line x1="16" y1="20" x2="16" y2="14" /><line x1="22" y1="20" x2="2" y2="20" /></>);
-const UsersIcon = () => I(<><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87" /></>);
-const DocIcon = () => I(<><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /></>);
+const FunnelIcon = () => I(<><polygon points="3 4 21 4 14 12.5 14 20 10 22 10 12.5 3 4" /></>);
 const PlugIcon = () => I(<><path d="M9 2v6M15 2v6M6 8h12v3a6 6 0 0 1-12 0z" /><path d="M12 17v5" /></>);
-const BookIcon = () => I(<><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" /><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" /></>);
-const GearIcon = () => I(<><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-2.82 1.17V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 8 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15H4.5a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 6 9.4l-.33-.33a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 12 4.6h.09A2 2 0 0 1 14 6v.09a1.65 1.65 0 0 0 2.82 1.17l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 12v.09z" /></>);
 
 const MenuIcon = () => (
   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="3" y1="6" x2="21" y2="6" /><line x1="3" y1="12" x2="21" y2="12" /><line x1="3" y1="18" x2="21" y2="18" /></svg>
@@ -41,25 +37,13 @@ const NAV_GROUPS: NavGroup[] = [
     title: null,
     items: [
       { href: "/", label: "Cockpit", Icon: HomeIcon },
+      { href: "/funnel", label: "Funnel", Icon: FunnelIcon },
       { href: "/strategy", label: "Strategy", Icon: MapIcon },
     ],
   },
   {
-    title: "Insights",
-    items: [
-      { href: "/insights", label: "Conversion Insights", Icon: ChartIcon },
-      { href: "/icp", label: "ICP Profile", Icon: UsersIcon },
-      { href: "/audiences", label: "Audiences", Icon: UsersIcon },
-      { href: "/brief", label: "Campaign Brief", Icon: DocIcon },
-    ],
-  },
-  {
-    title: "Account",
-    items: [
-      { href: "/connect", label: "Connections", Icon: PlugIcon },
-      { href: "/methodology", label: "Methodology", Icon: BookIcon },
-      { href: "/settings", label: "Settings", Icon: GearIcon },
-    ],
+    title: "Systems",
+    items: [{ href: "/connect", label: "Connections", Icon: PlugIcon }],
   },
 ];
 
