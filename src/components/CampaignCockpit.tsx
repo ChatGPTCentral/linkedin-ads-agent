@@ -87,12 +87,11 @@ function objLabel(o: string | null): string {
 function issuesFor(c: Campaign): string[] {
   const out: string[] = [];
   if (c.status !== "ACTIVE") return out;
-  if (!c.dailyBudget?.amount && !c.totalBudget?.amount)
-    out.push("No budget on the campaign — confirm the group carries one, or it won't spend.");
+  // Only the unambiguous config killers — no noisy heuristics. Budget lives at
+  // the campaign-group level (not readable here), so we don't false-flag it; and
+  // delivery/bid is visible directly in each card's Clicks/Quiz numbers.
   if (c.audit.audienceNetworkOn === true) out.push("Audience Network is ON — turn it off to keep spend on LinkedIn.");
   if (c.audit.audienceExpansionOn === true) out.push("Audience Expansion is ON — turn it off to keep the ICP tight.");
-  if (c.costType === "CPC" && c.bid?.amount && parseFloat(c.bid.amount) < 2)
-    out.push(`Manual CPC $${c.bid.amount} may be below the clearing price — watch impressions; raise if starved.`);
   return out;
 }
 
@@ -362,8 +361,8 @@ export function CampaignCockpit() {
                   {/* config chips */}
                   <div className="mt-3 flex flex-wrap gap-1.5">
                     <Chip>{bidLabel(c)}</Chip>
-                    <Chip tone={!c.dailyBudget?.amount && !c.totalBudget?.amount && c.status === "ACTIVE" ? "amber" : "zinc"}>
-                      {c.dailyBudget?.amount ? `${money(c.dailyBudget)}/day` : c.totalBudget?.amount ? `${money(c.totalBudget)} total` : "no budget"}
+                    <Chip>
+                      {c.dailyBudget?.amount ? `${money(c.dailyBudget)}/day` : c.totalBudget?.amount ? `${money(c.totalBudget)} total` : "group budget"}
                     </Chip>
                     <Chip tone={c.audit.audienceNetworkOn ? "amber" : "green"}>Network {c.audit.audienceNetworkOn ? "ON" : "off"}</Chip>
                     <Chip tone={c.audit.audienceExpansionOn ? "amber" : "green"}>Expansion {c.audit.audienceExpansionOn ? "ON" : "off"}</Chip>
