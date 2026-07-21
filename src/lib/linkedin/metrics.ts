@@ -5,6 +5,7 @@ interface AnalyticsElement {
   externalWebsiteConversions?: number;
   conversionValueInLocalCurrency?: string | number;
   clicks?: number;
+  landingPageClicks?: number;
   impressions?: number;
   pivotValues?: string[];
 }
@@ -14,6 +15,7 @@ export interface CampaignMetric {
   spend: number;
   conversions: number;
   clicks: number;
+  landingPageClicks: number;
   impressions: number;
   cpa: number | null;
   revenue: number;
@@ -49,6 +51,7 @@ export function computeMetrics(elementsRaw: unknown[]): {
       spend,
       conversions,
       clicks: num(e.clicks),
+      landingPageClicks: num(e.landingPageClicks),
       impressions: num(e.impressions),
       cpa: conversions > 0 ? spend / conversions : null,
       revenue,
