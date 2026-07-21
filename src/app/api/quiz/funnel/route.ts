@@ -19,6 +19,10 @@ export async function GET(req: NextRequest) {
   const db = getQuizDb();
   if (!db) return NextResponse.json({ ok: false, skipped: "set SUPABASE_DATABASE_URL in the environment" });
   const days = Math.min(Math.max(Number(req.nextUrl.searchParams.get("days")) || 30, 1), 365);
+  // Scope to "since campaigns launched" when the caller passes ?since=<epoch ms>
+  // (the earliest live-campaign start) — otherwise fall back to a rolling window.
+  const sinceMs = Number(req.nextUrl.searchParams.get("since"));
+  const cutoff = Number.isFinite(sinceMs) && sinceMs > 0 ? new Date(sinceMs) : new Date(Date.now() - days * 86400000);
 
   try {
     const rows = await db`
@@ -27,12 +31,12 @@ export async function GET(req: NextRequest) {
         from public.funnel_events
         where session_id is not null
           and utm_source = any(${PAID_LINKEDIN_SOURCES})
-          and ts >= now() - make_interval(days => ${days})
+          and ts >= ${cutoff}
       )
       select fe.event, count(distinct fe.session_id)::int as sessions
       from public.funnel_events fe
       join paid_sessions ps using (session_id)
-      where fe.ts >= now() - make_interval(days => ${days})
+      where fe.ts >= ${cutoff}
       group by 1`;
 
     const counts: Record<string, number> = {};
@@ -44,7 +48,7 @@ export async function GET(req: NextRequest) {
       from public.submissions
       where archived_at is null and utm_source = any(${PAID_LINKEDIN_SOURCES})
         and lifetime_value_usd > 0
-        and created_at >= now() - make_interval(days => ${days})`;
+        and created_at >= ${cutoff}`;
 
     const stages = [
       ...STAGES.map((s) => ({ key: s.key, label: s.label, sessions: counts[s.key] ?? 0 })),
