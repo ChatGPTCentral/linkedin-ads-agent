@@ -1,58 +1,76 @@
 "use client";
 
-// Paid-ads funnel, stage by stage. Quiz stages come from the quiz DB (session-
-// attributed li_ads), ad impressions/clicks from LinkedIn (this browser's
-// session, best-effort). Highlights the single biggest drop-off.
+// Paid-ads funnel, stage by stage — scoped to SINCE the current campaigns
+// launched (earliest live-campaign start), so pre-launch li_ads traffic never
+// pollutes it. Quiz stages from the quiz DB (session-attributed li_ads); ad
+// impressions/clicks from LinkedIn (this browser's session, best-effort).
 
 import { useCallback, useEffect, useState } from "react";
 import { Card, Callout, cn } from "./ui";
 import { num } from "@/lib/format";
 
 const ACCOUNT = "urn:li:sponsoredAccount:510931916";
-const DAYS_OPTS = [14, 30, 60, 90];
+const LIVE = new Set(["ACTIVE", "PAUSED", "DRAFT"]);
 
 type Stage = { key: string; label: string; sessions: number };
 type Row = { label: string; n: number; kind: "ad" | "quiz" };
 type Secondary = { referrals: number; starterKit: number; exitRescue: number };
 
 export function FunnelView() {
-  const [days, setDays] = useState(30);
   const [rows, setRows] = useState<Row[] | null>(null);
   const [secondary, setSecondary] = useState<Secondary | null>(null);
+  const [since, setSince] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const load = useCallback(async (d: number) => {
+  const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const fr = await fetch(`/api/quiz/funnel?days=${d}`, { cache: "no-store" });
+      // Earliest live-campaign start → the funnel window; plus ad impressions/clicks.
+      let sinceMs: number | null = null;
+      const ad: Row[] = [];
+      try {
+        const cr = await fetch("/api/linkedin/campaigns", { cache: "no-store" });
+        const cd = await cr.json();
+        if (cd.ok && Array.isArray(cd.campaigns)) {
+          const starts = cd.campaigns
+            .filter((c: { status?: string }) => LIVE.has(String(c.status)))
+            .map((c: { runSchedule?: { start?: number } }) => c.runSchedule?.start)
+            .filter((x: unknown): x is number => typeof x === "number");
+          if (starts.length) sinceMs = Math.min(...starts);
+
+          const acct = String(cd.account ?? ACCOUNT);
+          try {
+            const ar = await fetch(`/api/linkedin/analytics?account=${encodeURIComponent(acct)}`, { cache: "no-store" });
+            const adj = await ar.json();
+            if (adj.ok && Array.isArray(adj.computed)) {
+              const impr = adj.computed.reduce((s: number, c: { impressions?: number }) => s + (c.impressions ?? 0), 0);
+              const clk = adj.computed.reduce((s: number, c: { clicks?: number }) => s + (c.clicks ?? 0), 0);
+              if (impr > 0 || clk > 0) {
+                ad.push({ label: "Ad impressions", n: impr, kind: "ad" });
+                ad.push({ label: "Ad clicks", n: clk, kind: "ad" });
+              }
+            }
+          } catch {
+            /* skip ad rows */
+          }
+        }
+      } catch {
+        /* no campaigns / not connected — fall back to rolling window */
+      }
+      setSince(sinceMs);
+
+      const qs = sinceMs ? `since=${sinceMs}` : "days=30";
+      const fr = await fetch(`/api/quiz/funnel?${qs}`, { cache: "no-store" });
       const fd = await fr.json();
       if (!fd.ok) {
         setError(fd.skipped ?? fd.error ?? "funnel unavailable");
         setRows(null);
         return;
       }
-      const quizStages: Stage[] = fd.stages ?? [];
       setSecondary(fd.secondary ?? null);
-
-      // Prepend LinkedIn ad impressions/clicks (cookie-bound; skipped if not connected).
-      const ad: Row[] = [];
-      try {
-        const ar = await fetch(`/api/linkedin/analytics?account=${encodeURIComponent(ACCOUNT)}`, { cache: "no-store" });
-        const adj = await ar.json();
-        if (adj.ok && Array.isArray(adj.computed)) {
-          const impr = adj.computed.reduce((s: number, c: { impressions?: number }) => s + (c.impressions ?? 0), 0);
-          const clk = adj.computed.reduce((s: number, c: { clicks?: number }) => s + (c.clicks ?? 0), 0);
-          if (impr > 0 || clk > 0) {
-            ad.push({ label: "Ad impressions", n: impr, kind: "ad" });
-            ad.push({ label: "Ad clicks", n: clk, kind: "ad" });
-          }
-        }
-      } catch {
-        /* skip ad rows */
-      }
-
+      const quizStages: Stage[] = fd.stages ?? [];
       setRows([...ad, ...quizStages.map((s) => ({ label: s.label, n: s.sessions, kind: "quiz" as const }))]);
     } catch (e) {
       setError((e as Error).message);
@@ -62,9 +80,9 @@ export function FunnelView() {
   }, []);
 
   useEffect(() => {
-    const id = window.setTimeout(() => load(days), 0);
+    const id = window.setTimeout(() => load(), 0);
     return () => window.clearTimeout(id);
-  }, [days, load]);
+  }, [load]);
 
   // Biggest single-step drop (among stages with a non-zero predecessor).
   let worstIdx = -1;
@@ -83,28 +101,15 @@ export function FunnelView() {
     });
   }
   const top = rows && rows.length ? rows[0].n : 0;
+  const sinceLabel = since ? new Date(since).toLocaleDateString(undefined, { month: "short", day: "numeric" }) : null;
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-semibold tracking-tight text-zinc-900 sm:text-2xl">Funnel</h1>
-          <p className="mt-0.5 text-xs text-zinc-500">Paid ads (li_ads) · ad → quiz → checkout · last {days} days</p>
-        </div>
-        <div className="flex gap-1">
-          {DAYS_OPTS.map((d) => (
-            <button
-              key={d}
-              onClick={() => setDays(d)}
-              className={cn(
-                "h-8 border px-2.5 text-xs font-medium transition-colors",
-                d === days ? "border-zinc-900 bg-zinc-900 text-white" : "border-zinc-300 text-zinc-600 hover:bg-zinc-100"
-              )}
-            >
-              {d}d
-            </button>
-          ))}
-        </div>
+      <div>
+        <h1 className="text-xl font-semibold tracking-tight text-zinc-900 sm:text-2xl">Funnel</h1>
+        <p className="mt-0.5 text-xs text-zinc-500">
+          Paid ads (li_ads) · ad → quiz → checkout · {sinceLabel ? `since campaigns launched (${sinceLabel})` : "current campaigns"}
+        </p>
       </div>
 
       {error && (
@@ -163,8 +168,8 @@ export function FunnelView() {
           )}
 
           <p className="mt-3 text-[11px] text-zinc-400">
-            Paid sessions traced by session_id from the quiz DB; ad impressions/clicks from LinkedIn (this browser’s session). % = of the
-            previous stage.
+            Paid sessions traced by session_id from the quiz DB, since your current campaigns launched; ad impressions/clicks from
+            LinkedIn (this browser’s session). % = of the previous stage.
           </p>
         </Card>
       )}
