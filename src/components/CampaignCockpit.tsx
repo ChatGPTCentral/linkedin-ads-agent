@@ -56,12 +56,12 @@ type RecentItem = {
   jobTitle?: string | null;
 };
 
-// Quiz-CRM record URL template, e.g. "https://…/leads/{id}". When set, each lead
-// in the feed links to its CRM record (verified/enriched view) instead of raw
-// LinkedIn. Public NEXT_PUBLIC_ var — inlined at build.
-const CRM_RECORD_TMPL = process.env.NEXT_PUBLIC_QUIZ_CRM_RECORD_URL;
+// Quiz-CRM record URL template. Defaults to the admin/people record view; the
+// {id} is the submission id. Override with NEXT_PUBLIC_QUIZ_CRM_RECORD_URL if
+// the route differs. Each lead in the feed links to their CRM record.
+const CRM_RECORD_TMPL = process.env.NEXT_PUBLIC_QUIZ_CRM_RECORD_URL || "https://quiz.thecentral.ai/admin/people/{id}";
 function crmRecordUrl(id?: string | null): string | null {
-  return CRM_RECORD_TMPL && id ? CRM_RECORD_TMPL.replace("{id}", id) : null;
+  return id ? CRM_RECORD_TMPL.replace("{id}", id) : null;
 }
 
 const LIVE = new Set(["ACTIVE", "PAUSED", "DRAFT"]);
