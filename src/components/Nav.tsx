@@ -6,6 +6,7 @@ import { cn } from "./ui";
 
 const LINKS = [
   { href: "/", label: "Cockpit" },
+  { href: "/strategy", label: "Strategy" },
   { href: "/settings", label: "Settings" },
 ];
 
@@ -20,7 +21,9 @@ export function Nav() {
         const active =
           l.href === "/"
             ? pathname === "/"
-            : SETTINGS_ROUTES.some((r) => pathname === r || pathname.startsWith(r + "/"));
+            : l.href === "/settings"
+              ? SETTINGS_ROUTES.some((r) => pathname === r || pathname.startsWith(r + "/"))
+              : pathname === l.href || pathname.startsWith(l.href + "/");
         return (
           <Link
             key={l.href}
