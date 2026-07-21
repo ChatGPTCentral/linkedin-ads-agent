@@ -59,7 +59,7 @@ type RecentItem = {
 // Quiz-CRM record URL template. Defaults to the admin/people record view; the
 // {id} is the submission id. Override with NEXT_PUBLIC_QUIZ_CRM_RECORD_URL if
 // the route differs. Each lead in the feed links to their CRM record.
-const CRM_RECORD_TMPL = process.env.NEXT_PUBLIC_QUIZ_CRM_RECORD_URL || "https://quiz.thecentral.ai/admin/people/{id}";
+const CRM_RECORD_TMPL = process.env.NEXT_PUBLIC_QUIZ_CRM_RECORD_URL || "https://quiz.thecentral.ai/admin/submissions/{id}";
 function crmRecordUrl(id?: string | null): string | null {
   return id ? CRM_RECORD_TMPL.replace("{id}", id) : null;
 }
