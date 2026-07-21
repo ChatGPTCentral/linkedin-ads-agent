@@ -25,6 +25,7 @@ export async function GET(req: NextRequest) {
   try {
     const rows = await db`
       select
+        id,
         (extract(epoch from created_at) * 1000)::bigint as at_ms,
         coalesce(nullif(utm_ref, ''), '(none)') as utm_ref,
         score,
@@ -55,6 +56,7 @@ export async function GET(req: NextRequest) {
         // Identity only for the authenticated operator.
         ...(identified
           ? {
+              id: (r.id as string | null) ?? null,
               name: (r.name as string | null) ?? null,
               linkedinUrl: (r.linkedin_url as string | null) ?? null,
               company: (r.company_name as string | null) ?? null,

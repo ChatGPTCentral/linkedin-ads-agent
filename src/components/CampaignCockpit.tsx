@@ -49,11 +49,20 @@ type RecentItem = {
   isBuyer: boolean;
   ltv: number;
   // Identity — present only for the authenticated operator (gated server-side).
+  id?: string | null;
   name?: string | null;
   linkedinUrl?: string | null;
   company?: string | null;
   jobTitle?: string | null;
 };
+
+// Quiz-CRM record URL template, e.g. "https://…/leads/{id}". When set, each lead
+// in the feed links to its CRM record (verified/enriched view) instead of raw
+// LinkedIn. Public NEXT_PUBLIC_ var — inlined at build.
+const CRM_RECORD_TMPL = process.env.NEXT_PUBLIC_QUIZ_CRM_RECORD_URL;
+function crmRecordUrl(id?: string | null): string | null {
+  return CRM_RECORD_TMPL && id ? CRM_RECORD_TMPL.replace("{id}", id) : null;
+}
 
 const LIVE = new Set(["ACTIVE", "PAUSED", "DRAFT"]);
 const REFRESH_MS = 60_000;
@@ -410,30 +419,33 @@ export function CampaignCockpit() {
           {recent && recent.length > 0 && (
             <Card title="Recent quiz activity" subtitle="From the ads — what each LinkedIn conversion maps to" className="!p-4">
               <div className="divide-y divide-zinc-100">
-                {recent.map((it, i) => (
-                  <div key={i} className="flex items-center gap-2 py-2 text-sm">
-                    <Chip tone={it.utmRef === "cold" ? "indigo" : it.utmRef === "warm" ? "violet" : "zinc"}>
-                      {it.utmRef === "(none)" ? "li_ads" : it.utmRef}
-                    </Chip>
-                    {it.score != null && <span className="tabular-nums font-semibold text-zinc-800">{it.score}</span>}
-                    <span className="min-w-0 flex-1 truncate text-zinc-600">
-                      {it.name ? (
-                        it.linkedinUrl ? (
-                          <a href={it.linkedinUrl} target="_blank" rel="noreferrer" className="font-medium text-indigo-600 hover:underline">
-                            {it.name}
-                          </a>
+                {recent.map((it, i) => {
+                  const href = crmRecordUrl(it.id) ?? it.linkedinUrl ?? null;
+                  return (
+                    <div key={i} className="flex items-center gap-2 py-2 text-sm">
+                      <Chip tone={it.utmRef === "cold" ? "indigo" : it.utmRef === "warm" ? "violet" : "zinc"}>
+                        {it.utmRef === "(none)" ? "li_ads" : it.utmRef}
+                      </Chip>
+                      {it.score != null && <span className="tabular-nums font-semibold text-zinc-800">{it.score}</span>}
+                      <span className="min-w-0 flex-1 truncate text-zinc-600">
+                        {it.name ? (
+                          href ? (
+                            <a href={href} target="_blank" rel="noreferrer" className="font-medium text-indigo-600 hover:underline">
+                              {it.name}
+                            </a>
+                          ) : (
+                            <span className="font-medium text-zinc-800">{it.name}</span>
+                          )
                         ) : (
-                          <span className="font-medium text-zinc-800">{it.name}</span>
-                        )
-                      ) : (
-                        it.archetype ?? it.goal ?? "completed the quiz"
-                      )}
-                      {it.company && <span className="text-zinc-400"> · {it.company}</span>}
-                    </span>
-                    {it.isBuyer && <Chip tone="green">bought ${Math.round(it.ltv)}</Chip>}
-                    <span className="shrink-0 text-xs text-zinc-400">{relTime(it.atMs)}</span>
-                  </div>
-                ))}
+                          it.archetype ?? it.goal ?? "completed the quiz"
+                        )}
+                        {it.company && <span className="text-zinc-400"> · {it.company}</span>}
+                      </span>
+                      {it.isBuyer && <Chip tone="green">bought ${Math.round(it.ltv)}</Chip>}
+                      <span className="shrink-0 text-xs text-zinc-400">{relTime(it.atMs)}</span>
+                    </div>
+                  );
+                })}
               </div>
               <p className="mt-3 border-t border-zinc-100 pt-2 text-[11px] text-zinc-400">
                 Each completed quiz = a “Quiz Completed” conversion; a “bought” row = a purchase (CAPI) conversion. Names/LinkedIn show only to you (your logged-in session) — never on the public URL, never stored in code.
