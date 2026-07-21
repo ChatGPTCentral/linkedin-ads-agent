@@ -4,22 +4,23 @@ import { getQuizDb, PAID_LINKEDIN_SOURCES } from "@/lib/quiz/db";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// Paid (li_ads) quiz funnel, stage by stage — HUMAN-filtered.
+// Paid (li_ads) quiz funnel, stage by stage — HUMAN-filtered at the top only.
 //
-// Why the filter: the quiz logs every raw pageview, so a bare
-// utm_source='li_ads' count includes traffic that LinkedIn's "landing-page
-// clicks" correctly excludes — ad-verification scanners (The Media Trust,
-// creative-preview, AppNexus/adnxs) and Audience-Network placements on
-// third-party publisher sites. Those inflate "saw quiz" ~5x above real clicks
-// and never progress past the landing.
+// The problem: the quiz logs every raw pageview, so a bare utm_source='li_ads'
+// count includes traffic LinkedIn's "landing-page clicks" correctly excludes —
+// ad-verification scanners (The Media Trust, creative-preview, AppNexus/adnxs)
+// and Audience-Network placements on third-party publisher sites. Those inflate
+// "saw quiz" ~5x above real clicks and then bounce at the landing.
 //
-// The fix: only count a session as a genuine paid quiz-view when we have
-// POSITIVE evidence it came from a LinkedIn ad click — i.e. a LinkedIn
-// referrer (linkedin.com / lnkd.in) on one of its events. That keeps "saw
-// quiz" at or below LinkedIn's landing-page clicks (monotonic funnel) and
-// reconciles with Campaign Manager. It conservatively drops mobile in-app
-// clicks that strip the referrer (LinkedIn still counts those) — an accepted
-// undercount in exchange for a logically consistent funnel.
+// The fix, and why it only touches the top stage:
+//  - SAW QUIZ is bot-filtered: counted only when a session carries a LinkedIn
+//    referrer (linkedin.com / lnkd.in) — positive proof of a real ad click.
+//    That keeps it at/below LinkedIn's landing-page clicks (monotonic funnel).
+//  - Every stage BELOW (started / completed / checkout) counts ALL li_ads
+//    sessions with no referrer filter — bots never fill out a quiz, so those
+//    counts are already real humans. Filtering them would wrongly drop real
+//    people who arrived via mobile in-app or Audience-Network paths (no
+//    linkedin referrer), which is what made "completed" look too low before.
 //
 // Stages the operator asked for: Saw quiz -> Completed quiz -> Clicked
 // checkout -> Converted.
@@ -34,31 +35,45 @@ export async function GET(req: NextRequest) {
   const cutoff = Number.isFinite(sinceMs) && sinceMs > 0 ? new Date(sinceMs) : new Date(Date.now() - days * 86400000);
 
   try {
-    // Paid HUMAN sessions: entered via li_ads AND carry a LinkedIn referrer.
-    // The referrer condition is a fixed SQL predicate (no user input), so it
-    // lives inline in the template rather than as a bound parameter.
+    // One row per li_ads session, flagged for the LinkedIn referrer (bot filter)
+    // and for each stage event. The utm only sticks to the entry event, so we
+    // key off any li_ads event in the session then read ALL of its events.
+    // The referrer predicate is a fixed string (no user input) so it lives
+    // inline rather than as a bound parameter.
     const [funnel] = await db`
       with paid as (
-        select fe.session_id
+        select distinct session_id
+        from public.funnel_events
+        where utm_source = any(${PAID_LINKEDIN_SOURCES})
+          and ts >= ${cutoff}
+          and session_id is not null
+      ),
+      sess as (
+        select fe.session_id,
+          bool_or(fe.props->>'referrer' ilike '%linkedin.com%'
+               or fe.props->>'referrer' ilike '%lnkd.in%')            as li_ref,
+          bool_or(fe.event = 'quiz_start')                            as started,
+          bool_or(fe.event = 'result_view')                          as completed,
+          bool_or(fe.event = 'checkout_click')                       as checkout,
+          bool_or(fe.event = 'email_submitted')                      as leads,
+          bool_or(fe.event in ('share_click','pass_unlock'))         as referrals,
+          bool_or(fe.event = 'starter_kit_click')                    as starter_kit,
+          bool_or(fe.event = 'exit_rescue_accepted')                 as exit_rescue
         from public.funnel_events fe
-        where fe.utm_source = any(${PAID_LINKEDIN_SOURCES})
-          and fe.ts >= ${cutoff}
-          and fe.session_id is not null
+        join paid using (session_id)
+        where fe.ts >= ${cutoff}
         group by fe.session_id
-        having bool_or(fe.props->>'referrer' ilike '%linkedin.com%'
-                    or fe.props->>'referrer' ilike '%lnkd.in%')
       )
       select
-        count(distinct p.session_id)::int                                                   as saw_quiz,
-        count(distinct fe.session_id) filter (where fe.event = 'result_view')::int          as completed_quiz,
-        count(distinct fe.session_id) filter (where fe.event = 'checkout_click')::int        as checkout,
-        count(distinct fe.session_id) filter (where fe.event = 'email_submitted')::int       as leads,
-        count(distinct fe.session_id) filter (where fe.event in ('share_click','pass_unlock'))::int as referrals,
-        count(distinct fe.session_id) filter (where fe.event = 'starter_kit_click')::int     as starter_kit,
-        count(distinct fe.session_id) filter (where fe.event = 'exit_rescue_accepted')::int  as exit_rescue
-      from paid p
-      left join public.funnel_events fe
-        on fe.session_id = p.session_id and fe.ts >= ${cutoff}`;
+        count(*) filter (where li_ref)::int       as saw_quiz,
+        count(*) filter (where started)::int       as started,
+        count(*) filter (where completed)::int     as completed_quiz,
+        count(*) filter (where checkout)::int       as checkout,
+        count(*) filter (where leads)::int          as leads,
+        count(*) filter (where referrals)::int      as referrals,
+        count(*) filter (where starter_kit)::int    as starter_kit,
+        count(*) filter (where exit_rescue)::int    as exit_rescue
+      from sess`;
 
     // Purchases attributed to paid ads (source of truth = submissions revenue).
     const [buy] = await db`
@@ -68,10 +83,13 @@ export async function GET(req: NextRequest) {
         and lifetime_value_usd > 0
         and created_at >= ${cutoff}`;
 
-    const saw = Number(funnel?.saw_quiz ?? 0);
     const completed = Number(funnel?.completed_quiz ?? 0);
+    // "Saw quiz" is the bot-filtered reach; guard so it can never read below a
+    // downstream stage (keeps the displayed funnel monotonic without capping
+    // any real count downward).
+    const saw = Math.max(Number(funnel?.saw_quiz ?? 0), completed);
     const checkout = Number(funnel?.checkout ?? 0);
-    // Keep the visible funnel monotonic: a purchase can't exceed a checkout click.
+    // A purchase can't exceed a checkout click.
     const converted = Math.min(Number(buy?.buyers ?? 0), checkout);
 
     const stages = [
@@ -82,6 +100,7 @@ export async function GET(req: NextRequest) {
     ];
 
     const secondary = {
+      started: Number(funnel?.started ?? 0),
       leads: Number(funnel?.leads ?? 0),
       referrals: Number(funnel?.referrals ?? 0),
       starterKit: Number(funnel?.starter_kit ?? 0),
@@ -92,8 +111,8 @@ export async function GET(req: NextRequest) {
       ok: true,
       days,
       source: "li_ads",
-      filter: "linkedin_referrer",
-      note: "Saw-quiz counts only li_ads sessions with a LinkedIn referrer (real ad clicks), excluding ad-verification bots and Audience-Network noise.",
+      filter: "linkedin_referrer_top_only",
+      note: "Saw-quiz counts only li_ads sessions with a LinkedIn referrer (real ad clicks, excluding ad-verification bots & Audience-Network noise). Completed/checkout count all real humans — bots never progress past the landing.",
       stages,
       secondary,
     });

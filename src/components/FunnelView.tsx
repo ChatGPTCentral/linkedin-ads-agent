@@ -14,7 +14,7 @@ const LIVE = new Set(["ACTIVE", "PAUSED", "DRAFT"]);
 
 type Stage = { key: string; label: string; sessions: number };
 type Row = { label: string; n: number; kind: "ad" | "quiz" };
-type Secondary = { leads: number; referrals: number; starterKit: number; exitRescue: number };
+type Secondary = { started: number; leads: number; referrals: number; starterKit: number; exitRescue: number };
 
 export function FunnelView() {
   const [rows, setRows] = useState<Row[] | null>(null);
@@ -164,6 +164,9 @@ export function FunnelView() {
           {secondary && (
             <div className="mt-5 flex flex-wrap gap-x-5 gap-y-1 border-t border-zinc-100 pt-3 text-xs text-zinc-500">
               <span>
+                Started quiz: <strong className="text-zinc-700">{num(secondary.started)}</strong>
+              </span>
+              <span>
                 Leads (email): <strong className="text-zinc-700">{num(secondary.leads)}</strong>
               </span>
               <span>
@@ -179,9 +182,10 @@ export function FunnelView() {
           )}
 
           <p className="mt-3 text-[11px] text-zinc-400">
-            Ad impressions &amp; landing-page clicks from LinkedIn (this browser’s session). Quiz stages traced by session_id from
-            the quiz DB since your current campaigns launched, counting only sessions with a real LinkedIn referrer — ad-verification
-            bots and Audience-Network noise are filtered out, so “saw quiz” stays at or below clicks. % = of the previous stage.
+            Ad impressions &amp; landing-page clicks from LinkedIn (this browser’s session). Quiz stages traced by session_id from the
+            quiz DB since your current campaigns launched. “Saw quiz” counts only sessions with a real LinkedIn referrer — ad-verification
+            bots and Audience-Network noise are excluded there, so it stays at or below clicks. Completed / checkout count every real
+            human (bots never fill out a quiz). % = of the previous stage.
           </p>
         </Card>
       )}
