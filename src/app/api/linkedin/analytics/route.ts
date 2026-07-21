@@ -5,7 +5,7 @@ import { computeMetrics } from "@/lib/linkedin/metrics";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const BASE_FIELDS = "impressions,clicks,costInUsd,externalWebsiteConversions,oneClickLeads,pivotValues";
+const BASE_FIELDS = "impressions,clicks,landingPageClicks,costInUsd,externalWebsiteConversions,oneClickLeads,pivotValues";
 
 // Pull last-30-day ad analytics for an account, pivoted by campaign, and
 // compute spend / conversions / CPA / ROAS. The conversion-value field is

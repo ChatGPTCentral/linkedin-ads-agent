@@ -34,10 +34,14 @@ export function FunnelView() {
         const cr = await fetch("/api/linkedin/campaigns", { cache: "no-store" });
         const cd = await cr.json();
         if (cd.ok && Array.isArray(cd.campaigns)) {
-          const starts = cd.campaigns
-            .filter((c: { status?: string }) => LIVE.has(String(c.status)))
-            .map((c: { runSchedule?: { start?: number } }) => c.runSchedule?.start)
-            .filter((x: unknown): x is number => typeof x === "number");
+          // Only THIS run's campaigns — not the whole account/history.
+          const liveUrns = new Set<string>();
+          const starts: number[] = [];
+          for (const c of cd.campaigns as { status?: string; urn?: string; runSchedule?: { start?: number } }[]) {
+            if (!LIVE.has(String(c.status))) continue;
+            if (c.urn) liveUrns.add(c.urn);
+            if (typeof c.runSchedule?.start === "number") starts.push(c.runSchedule.start);
+          }
           if (starts.length) sinceMs = Math.min(...starts);
 
           const acct = String(cd.account ?? ACCOUNT);
@@ -45,11 +49,14 @@ export function FunnelView() {
             const ar = await fetch(`/api/linkedin/analytics?account=${encodeURIComponent(acct)}`, { cache: "no-store" });
             const adj = await ar.json();
             if (adj.ok && Array.isArray(adj.computed)) {
-              const impr = adj.computed.reduce((s: number, c: { impressions?: number }) => s + (c.impressions ?? 0), 0);
-              const clk = adj.computed.reduce((s: number, c: { clicks?: number }) => s + (c.clicks ?? 0), 0);
-              if (impr > 0 || clk > 0) {
+              const scoped = (adj.computed as { campaign?: string | null; impressions?: number; clicks?: number; landingPageClicks?: number }[]).filter(
+                (c) => c.campaign && liveUrns.has(c.campaign)
+              );
+              const impr = scoped.reduce((s, c) => s + (c.impressions ?? 0), 0);
+              const lpc = scoped.reduce((s, c) => s + (c.landingPageClicks ?? c.clicks ?? 0), 0);
+              if (impr > 0 || lpc > 0) {
                 ad.push({ label: "Ad impressions", n: impr, kind: "ad" });
-                ad.push({ label: "Ad clicks", n: clk, kind: "ad" });
+                ad.push({ label: "Landing-page clicks", n: lpc, kind: "ad" });
               }
             }
           } catch {
