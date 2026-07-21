@@ -16,8 +16,11 @@
   --ink: #37352F;
   --slate: rgba(55, 53, 47, 0.65);
   --line: rgba(55, 53, 47, 0.09);
-  --blue: #2383E2;
-  --blue-deep: #1A6BBF;
+  --blue: #0A66C2;
+  --blue-deep: #004182;
+  --li-blue: #0A66C2;
+  --li-blue-dark: #004182;
+  --li-blue-tint: #E8F3FF;
   --gold: #C77D1A;
   --gold-soft: #FBF3E4;
   --good: #0F7B4E;
@@ -53,17 +56,17 @@
   --color-zinc-800: #37352F;
   --color-zinc-900: #2A2825;
 
-  /* accent → AI Central azul / blue */
-  --color-indigo-50: #EAF3FB;
-  --color-indigo-100: #D3E6F7;
-  --color-indigo-200: #AFD2F0;
-  --color-indigo-300: #7FB6E6;
-  --color-indigo-400: #4A97DB;
-  --color-indigo-500: #2383E2;
-  --color-indigo-600: #046BB1;
-  --color-indigo-700: #1A5A94;
-  --color-indigo-800: #144866;
-  --color-indigo-900: #0B3355;
+  /* accent → LinkedIn blue */
+  --color-indigo-50: #E8F3FF;
+  --color-indigo-100: #CFE4FB;
+  --color-indigo-200: #A9CFF5;
+  --color-indigo-300: #6FADEE;
+  --color-indigo-400: #378FE9;
+  --color-indigo-500: #0A66C2;
+  --color-indigo-600: #0A66C2;
+  --color-indigo-700: #004182;
+  --color-indigo-800: #00325F;
+  --color-indigo-900: #002443;
 
   /* violet → marian blue */
   --color-violet-50: #EDEEF7;
@@ -101,7 +104,7 @@
   --color-red-700: #9E2E2E;
 
   /* strategy chart accents */
-  --color-sky-500: #046BB1;
+  --color-sky-500: #0A66C2;
   --color-orange-500: #E48715;
   --color-rose-500: #BE3B3B;
 }
@@ -110,6 +113,13 @@
 *::before,
 *::after {
   box-sizing: border-box;
+}
+
+/* Squared-off — no rounded corners anywhere (LinkedIn-ads look). */
+*,
+*::before,
+*::after {
+  border-radius: 0 !important;
 }
 
 html,
@@ -156,7 +166,7 @@ body {
   justify-content: space-between;
   gap: 10px;
   padding: 16px 14px 14px;
-  border-bottom: 1px solid var(--sb-border);
+  border-bottom: 2px solid var(--li-blue);
 }
 .sb-logo-img {
   display: flex;
@@ -260,12 +270,16 @@ body {
   color: var(--sb-text-hi);
 }
 .sb-item.active {
-  background: var(--sb-active-bg);
-  color: var(--ink);
+  background: var(--li-blue-tint);
+  color: var(--li-blue);
+  box-shadow: inset 2px 0 0 var(--li-blue);
 }
 .sb-item.active .sb-item-label {
-  color: var(--ink);
+  color: var(--li-blue);
   font-weight: 600;
+}
+.sb-item.active .sb-icon {
+  color: var(--li-blue);
 }
 .sb-icon {
   flex-shrink: 0;
@@ -285,7 +299,7 @@ body {
   gap: 12px;
   padding: 12px 16px;
   background: var(--bg);
-  border-bottom: 1px solid var(--line);
+  border-bottom: 2px solid var(--li-blue);
   position: sticky;
   top: 0;
   z-index: 200;
