@@ -14,7 +14,7 @@ const LIVE = new Set(["ACTIVE", "PAUSED", "DRAFT"]);
 
 type Stage = { key: string; label: string; sessions: number };
 type Row = { label: string; n: number; kind: "ad" | "quiz" };
-type Secondary = { referrals: number; starterKit: number; exitRescue: number };
+type Secondary = { leads: number; referrals: number; starterKit: number; exitRescue: number };
 
 export function FunnelView() {
   const [rows, setRows] = useState<Row[] | null>(null);
@@ -115,7 +115,8 @@ export function FunnelView() {
       <div>
         <h1 className="text-xl font-semibold tracking-tight text-zinc-900 sm:text-2xl">Funnel</h1>
         <p className="mt-0.5 text-xs text-zinc-500">
-          Paid ads (li_ads) · ad → quiz → checkout · {sinceLabel ? `since campaigns launched (${sinceLabel})` : "current campaigns"}
+          Paid ads (li_ads) · impressions → clicks → quiz → checkout → convert ·{" "}
+          {sinceLabel ? `since campaigns launched (${sinceLabel})` : "current campaigns"}
         </p>
       </div>
 
@@ -163,6 +164,9 @@ export function FunnelView() {
           {secondary && (
             <div className="mt-5 flex flex-wrap gap-x-5 gap-y-1 border-t border-zinc-100 pt-3 text-xs text-zinc-500">
               <span>
+                Leads (email): <strong className="text-zinc-700">{num(secondary.leads)}</strong>
+              </span>
+              <span>
                 Referrals / shares: <strong className="text-zinc-700">{num(secondary.referrals)}</strong>
               </span>
               <span>
@@ -175,8 +179,9 @@ export function FunnelView() {
           )}
 
           <p className="mt-3 text-[11px] text-zinc-400">
-            Paid sessions traced by session_id from the quiz DB, since your current campaigns launched; ad impressions/clicks from
-            LinkedIn (this browser’s session). % = of the previous stage.
+            Ad impressions &amp; landing-page clicks from LinkedIn (this browser’s session). Quiz stages traced by session_id from
+            the quiz DB since your current campaigns launched, counting only sessions with a real LinkedIn referrer — ad-verification
+            bots and Audience-Network noise are filtered out, so “saw quiz” stays at or below clicks. % = of the previous stage.
           </p>
         </Card>
       )}
