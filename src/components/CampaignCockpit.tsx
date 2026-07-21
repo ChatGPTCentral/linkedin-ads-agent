@@ -23,6 +23,7 @@ type Campaign = {
   name: string | null;
   status: string | null;
   objectiveType: string | null;
+  optimizationTargetType: string | null;
   costType: string | null;
   bid: Money;
   dailyBudget: Money;
@@ -70,17 +71,28 @@ const REFRESH_MS = 60_000;
 function money(m: Money): string {
   return m && m.amount ? `$${m.amount}` : "—";
 }
-function bidLabel(c: Campaign): string {
-  if (!c.bid?.amount) return "—";
-  const t = c.costType ? ` ${c.costType}` : "";
-  return `$${c.bid.amount}${t}`;
+/** Human bid-strategy from the API fields: Manual CPC vs Cost cap vs Max delivery. */
+function bidStrategy(c: Campaign): string {
+  const amt = c.bid?.amount ? `$${c.bid.amount}` : "";
+  const ot = (c.optimizationTargetType ?? "").toUpperCase();
+  const maxClicks = ot.includes("MAXIMIZE_CLICK");
+  if (ot.includes("CAP_COST")) return `Cost cap ${amt}${maxClicks ? " · max clicks" : ""}`.trim();
+  if (c.costType === "CPC") return amt ? `Manual CPC ${amt}/click` : "Manual CPC";
+  if (c.costType === "CPM" && (ot === "NONE" || ot === "" || ot.startsWith("MAX")))
+    return amt ? `Max delivery · ${amt} CPM` : "Max delivery";
+  return amt ? `${c.costType ?? ""} ${amt}`.trim() : c.costType ?? "—";
 }
 function roasLabel(r: number | null): string {
   return r != null ? `${r.toFixed(1)}×` : "—";
 }
 function objLabel(o: string | null): string {
   if (!o) return "—";
-  return o.replace("WEBSITE_", "").replace(/_/g, " ").toLowerCase();
+  if (o === "WEBSITE_VISIT") return "Website Visits · landing-page clicks";
+  if (o === "WEBSITE_CONVERSION") return "Website Conversions";
+  return o.replace(/_/g, " ").toLowerCase();
+}
+function budgetLabel(c: Campaign): string {
+  return c.dailyBudget?.amount ? `${money(c.dailyBudget)}/day` : c.totalBudget?.amount ? `${money(c.totalBudget)} total` : "group budget";
 }
 
 /** The health flags that quietly wreck performance. Only warn on live campaigns. */
@@ -351,22 +363,25 @@ export function CampaignCockpit() {
                 <Card key={String(c.id)} className="!p-4">
                   {/* title row */}
                   <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="break-words text-sm font-semibold text-zinc-900">{c.name ?? c.id}</div>
-                      <div className="mt-0.5 text-xs text-zinc-400">{objLabel(c.objectiveType)}</div>
-                    </div>
+                    <div className="break-words text-sm font-semibold text-zinc-900">{c.name ?? c.id}</div>
                     <Chip tone={c.status === "ACTIVE" ? "green" : c.status === "PAUSED" ? "amber" : "zinc"}>{c.status}</Chip>
                   </div>
 
-                  {/* config chips */}
-                  <div className="mt-3 flex flex-wrap gap-1.5">
-                    <Chip>{bidLabel(c)}</Chip>
-                    <Chip>
-                      {c.dailyBudget?.amount ? `${money(c.dailyBudget)}/day` : c.totalBudget?.amount ? `${money(c.totalBudget)} total` : "group budget"}
-                    </Chip>
+                  {/* strategy summary — objective / bidding / budget */}
+                  <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 border-y border-zinc-100 py-2.5 text-[13px]">
+                    <dt className="text-zinc-400">Objective</dt>
+                    <dd className="text-right font-medium text-zinc-700">{objLabel(c.objectiveType)}</dd>
+                    <dt className="text-zinc-400">Bidding</dt>
+                    <dd className="text-right font-medium text-zinc-700">{bidStrategy(c)}</dd>
+                    <dt className="text-zinc-400">Budget</dt>
+                    <dd className="text-right font-medium text-zinc-700">{budgetLabel(c)}</dd>
+                  </dl>
+
+                  {/* audience chips */}
+                  <div className="mt-2.5 flex flex-wrap gap-1.5">
                     <Chip tone={c.audit.audienceNetworkOn ? "amber" : "green"}>Network {c.audit.audienceNetworkOn ? "ON" : "off"}</Chip>
                     <Chip tone={c.audit.audienceExpansionOn ? "amber" : "green"}>Expansion {c.audit.audienceExpansionOn ? "ON" : "off"}</Chip>
-                    {c.audit.targetsMatchedAudience && <Chip tone="violet">Retargeting</Chip>}
+                    {c.audit.targetsMatchedAudience ? <Chip tone="violet">Retargeting</Chip> : <Chip tone="indigo">Cold ICP</Chip>}
                   </div>
 
                   {/* per-campaign funnel: clicks → quiz, and cost per quiz */}
