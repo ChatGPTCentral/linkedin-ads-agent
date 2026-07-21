@@ -48,6 +48,11 @@ type RecentItem = {
   goal: string | null;
   isBuyer: boolean;
   ltv: number;
+  // Identity — present only for the authenticated operator (gated server-side).
+  name?: string | null;
+  linkedinUrl?: string | null;
+  company?: string | null;
+  jobTitle?: string | null;
 };
 
 const LIVE = new Set(["ACTIVE", "PAUSED", "DRAFT"]);
@@ -82,11 +87,19 @@ function issuesFor(c: Campaign): string[] {
   return out;
 }
 
+/** Map a campaign to its quiz utm_ref via the naming convention (Cold/Warm). */
+function refForCampaign(name: string | null): string | null {
+  const n = (name ?? "").toLowerCase();
+  if (n.includes("warm")) return "warm";
+  if (n.includes("cold")) return "cold";
+  return null;
+}
+
 export function CampaignCockpit() {
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [perf, setPerf] = useState<Perf[]>([]);
   const [roasEstimated, setRoasEstimated] = useState(false);
-  const [quiz, setQuiz] = useState<{ total: number; skipped?: string } | null>(null);
+  const [quiz, setQuiz] = useState<{ total: number; byRef?: Record<string, number>; skipped?: string } | null>(null);
   const [recent, setRecent] = useState<RecentItem[] | null>(null);
   const [connected, setConnected] = useState<boolean | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -133,7 +146,13 @@ export function CampaignCockpit() {
       try {
         const qr = await fetch("/api/quiz/attribution?days=30", { cache: "no-store" });
         const qd = await qr.json();
-        setQuiz(qd.ok ? { total: qd.total ?? 0 } : { total: 0, skipped: qd.skipped ?? qd.error });
+        if (qd.ok) {
+          const byRef: Record<string, number> = {};
+          for (const r of (qd.byRef ?? []) as { utmRef: string; fills: number }[]) byRef[r.utmRef] = r.fills;
+          setQuiz({ total: qd.total ?? 0, byRef });
+        } else {
+          setQuiz({ total: 0, skipped: qd.skipped ?? qd.error });
+        }
       } catch {
         /* non-fatal */
       }
@@ -317,6 +336,9 @@ export function CampaignCockpit() {
             {campaigns.map((c) => {
               const p = perfFor(c.urn);
               const issues = issuesFor(c);
+              const ref = refForCampaign(c.name);
+              const fills = ref && quiz?.byRef ? quiz.byRef[ref] ?? 0 : null;
+              const cpq = fills != null && fills > 0 && p && p.spend > 0 ? p.spend / fills : null;
               return (
                 <Card key={String(c.id)} className="!p-4">
                   {/* title row */}
@@ -339,12 +361,12 @@ export function CampaignCockpit() {
                     {c.audit.targetsMatchedAudience && <Chip tone="violet">Retargeting</Chip>}
                   </div>
 
-                  {/* perf mini-grid */}
+                  {/* per-campaign funnel: clicks → quiz, and cost per quiz */}
                   <div className="mt-3 grid grid-cols-4 gap-2 rounded-lg bg-zinc-50 p-2.5 text-center">
-                    <Metric label="Impr" value={p ? num(p.impressions) : "—"} />
                     <Metric label="Clicks" value={p ? num(p.clicks) : "—"} />
+                    <Metric label="Quiz" value={fills != null ? num(fills) : "—"} />
                     <Metric label="Spend" value={p ? usd(p.spend, { cents: true }) : "—"} />
-                    <Metric label="CPA" value={p?.cpa != null ? usd(p.cpa, { cents: true }) : "—"} />
+                    <Metric label="Cost / quiz" value={cpq != null ? usd(cpq, { cents: true }) : "—"} />
                   </div>
 
                   {/* inline issues */}
@@ -394,14 +416,27 @@ export function CampaignCockpit() {
                       {it.utmRef === "(none)" ? "li_ads" : it.utmRef}
                     </Chip>
                     {it.score != null && <span className="tabular-nums font-semibold text-zinc-800">{it.score}</span>}
-                    <span className="min-w-0 flex-1 truncate text-zinc-500">{it.archetype ?? it.goal ?? "completed the quiz"}</span>
+                    <span className="min-w-0 flex-1 truncate text-zinc-600">
+                      {it.name ? (
+                        it.linkedinUrl ? (
+                          <a href={it.linkedinUrl} target="_blank" rel="noreferrer" className="font-medium text-indigo-600 hover:underline">
+                            {it.name}
+                          </a>
+                        ) : (
+                          <span className="font-medium text-zinc-800">{it.name}</span>
+                        )
+                      ) : (
+                        it.archetype ?? it.goal ?? "completed the quiz"
+                      )}
+                      {it.company && <span className="text-zinc-400"> · {it.company}</span>}
+                    </span>
                     {it.isBuyer && <Chip tone="green">bought ${Math.round(it.ltv)}</Chip>}
                     <span className="shrink-0 text-xs text-zinc-400">{relTime(it.atMs)}</span>
                   </div>
                 ))}
               </div>
               <p className="mt-3 border-t border-zinc-100 pt-2 text-[11px] text-zinc-400">
-                Each completed quiz = a “Quiz Completed” conversion; a “bought” row = a purchase (CAPI) conversion. Anonymized — no personal data.
+                Each completed quiz = a “Quiz Completed” conversion; a “bought” row = a purchase (CAPI) conversion. Names/LinkedIn show only to you (your logged-in session) — never on the public URL, never stored in code.
               </p>
             </Card>
           )}
