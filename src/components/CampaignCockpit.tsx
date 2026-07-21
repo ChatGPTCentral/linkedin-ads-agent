@@ -305,8 +305,8 @@ export function CampaignCockpit() {
             ? "Your LinkedIn session isn't on this browser/host. "
             : `Couldn't load LinkedIn (${error}). `}
           Go to{" "}
-          <Link href="/settings" className="font-medium underline">
-            Settings → Connections
+          <Link href="/connect" className="font-medium underline">
+            Connections
           </Link>{" "}
           and connect, then reload.
         </Callout>
@@ -347,8 +347,8 @@ export function CampaignCockpit() {
             {campaigns.length === 0 && !loading && (
               <div className="rounded-xl border border-dashed border-zinc-300 py-10 text-center text-sm text-zinc-400">
                 No live campaigns. Create one from{" "}
-                <Link href="/settings" className="underline">
-                  Settings → Connections
+                <Link href="/connect" className="underline">
+                  Connections
                 </Link>
                 .
               </div>

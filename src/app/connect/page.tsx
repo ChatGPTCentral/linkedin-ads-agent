@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { AUDIENCES, AD_COPY } from "@/data/linkedin";
 import { LinkedInPanel } from "@/components/LinkedInPanel";
 import { Callout } from "@/components/ui";
@@ -13,13 +12,10 @@ export default function ConnectPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-zinc-900">LinkedIn Ads Integration</h1>
+        <h1 className="text-2xl font-semibold tracking-tight text-zinc-900">Connections</h1>
         <p className="mt-1 max-w-2xl text-sm text-zinc-500">
-          Connect your LinkedIn ad account to validate the{" "}
-          <Link href="/audiences" className="font-medium text-indigo-600 underline">
-            designed audiences
-          </Link>{" "}
-          against real reach and push them into Campaign Manager as paused drafts.
+          The connected systems behind the funnel — LinkedIn Ads, Google, Stripe and the Quiz DB. Connect your LinkedIn ad account to
+          read campaigns &amp; analytics, manage conversions &amp; saved audiences, and stage paused campaigns.
         </p>
       </div>
 
