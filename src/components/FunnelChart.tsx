@@ -1,22 +1,25 @@
 "use client";
 
-// Paid-ads funnel, stage by stage — scoped to SINCE the current campaigns
-// launched (earliest live-campaign start), so pre-launch li_ads traffic never
-// pollutes it. Quiz stages from the quiz DB (session-attributed li_ads); ad
-// impressions/clicks from LinkedIn (this browser's session, best-effort).
+// Paid-ads funnel chart — the visual only (no page header), so it can sit inside
+// the cockpit under the top numbers. Self-fetching + live: reads the current
+// live campaigns for the window + ad impressions/clicks (LinkedIn, this
+// browser's session), then the quiz stages from the quiz DB scoped to since the
+// campaigns launched. "Saw quiz" is bot-filtered; stages below count real
+// humans (see /api/quiz/funnel).
 
 import { useCallback, useEffect, useState } from "react";
-import { Card, Callout, cn } from "./ui";
+import { Card, cn } from "./ui";
 import { num } from "@/lib/format";
 
 const ACCOUNT = "urn:li:sponsoredAccount:510931916";
 const LIVE = new Set(["ACTIVE", "PAUSED", "DRAFT"]);
+const REFRESH_MS = 60_000;
 
 type Stage = { key: string; label: string; sessions: number };
 type Row = { label: string; n: number; kind: "ad" | "quiz" };
 type Secondary = { started: number; leads: number; referrals: number; starterKit: number; exitRescue: number };
 
-export function FunnelView() {
+export function FunnelChart({ className }: { className?: string }) {
   const [rows, setRows] = useState<Row[] | null>(null);
   const [secondary, setSecondary] = useState<Secondary | null>(null);
   const [since, setSince] = useState<number | null>(null);
@@ -34,7 +37,6 @@ export function FunnelView() {
         const cr = await fetch("/api/linkedin/campaigns", { cache: "no-store" });
         const cd = await cr.json();
         if (cd.ok && Array.isArray(cd.campaigns)) {
-          // Only THIS run's campaigns — not the whole account/history.
           const liveUrns = new Set<string>();
           const starts: number[] = [];
           for (const c of cd.campaigns as { status?: string; urn?: string; runSchedule?: { start?: number } }[]) {
@@ -49,9 +51,9 @@ export function FunnelView() {
             const ar = await fetch(`/api/linkedin/analytics?account=${encodeURIComponent(acct)}`, { cache: "no-store" });
             const adj = await ar.json();
             if (adj.ok && Array.isArray(adj.computed)) {
-              const scoped = (adj.computed as { campaign?: string | null; impressions?: number; clicks?: number; landingPageClicks?: number }[]).filter(
-                (c) => c.campaign && liveUrns.has(c.campaign)
-              );
+              const scoped = (
+                adj.computed as { campaign?: string | null; impressions?: number; clicks?: number; landingPageClicks?: number }[]
+              ).filter((c) => c.campaign && liveUrns.has(c.campaign));
               const impr = scoped.reduce((s, c) => s + (c.impressions ?? 0), 0);
               const lpc = scoped.reduce((s, c) => s + (c.landingPageClicks ?? c.clicks ?? 0), 0);
               if (impr > 0 || lpc > 0) {
@@ -91,6 +93,11 @@ export function FunnelView() {
     return () => window.clearTimeout(id);
   }, [load]);
 
+  useEffect(() => {
+    const t = setInterval(() => load(), REFRESH_MS);
+    return () => clearInterval(t);
+  }, [load]);
+
   // Biggest single-step drop (among stages with a non-zero predecessor).
   let worstIdx = -1;
   let worstStep = 101;
@@ -111,24 +118,23 @@ export function FunnelView() {
   const sinceLabel = since ? new Date(since).toLocaleDateString(undefined, { month: "short", day: "numeric" }) : null;
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-xl font-semibold tracking-tight text-zinc-900 sm:text-2xl">Funnel</h1>
-        <p className="mt-0.5 text-xs text-zinc-500">
-          Paid ads (li_ads) · impressions → clicks → quiz → checkout → convert ·{" "}
-          {sinceLabel ? `since campaigns launched (${sinceLabel})` : "current campaigns"}
-        </p>
+    <Card className={cn("!p-4 sm:!p-5", className)}>
+      <div className="mb-3 flex items-baseline justify-between gap-3">
+        <h2 className="text-sm font-semibold text-zinc-900">Funnel</h2>
+        <span className="text-[11px] text-zinc-400">
+          {sinceLabel ? `since launch · ${sinceLabel}` : "current campaigns"}
+        </span>
       </div>
 
       {error && (
-        <Callout tone="amber" title="Funnel unavailable">
-          {error.toUpperCase().includes("SUPABASE") ? "The quiz DB isn’t connected — set SUPABASE_DATABASE_URL in Vercel." : error}
-        </Callout>
+        <div className="py-4 text-xs text-amber-700">
+          {error.toUpperCase().includes("SUPABASE") ? "Quiz DB isn’t connected — set SUPABASE_DATABASE_URL in Vercel." : error}
+        </div>
       )}
-      {loading && !rows && <div className="py-16 text-center text-sm text-zinc-400">Loading funnel…</div>}
+      {loading && !rows && <div className="py-10 text-center text-sm text-zinc-400">Loading funnel…</div>}
 
       {rows && (
-        <Card className="!p-4 sm:!p-5">
+        <>
           <div className="space-y-3">
             {rows.map((r, i) => {
               const prev = i > 0 ? rows[i - 1].n : null;
@@ -182,13 +188,12 @@ export function FunnelView() {
           )}
 
           <p className="mt-3 text-[11px] text-zinc-400">
-            Ad impressions &amp; landing-page clicks from LinkedIn (this browser’s session). Quiz stages traced by session_id from the
-            quiz DB since your current campaigns launched. “Saw quiz” counts only sessions with a real LinkedIn referrer — ad-verification
-            bots and Audience-Network noise are excluded there, so it stays at or below clicks. Completed / checkout count every real
-            human (bots never fill out a quiz). % = of the previous stage.
+            Ad impressions &amp; landing-page clicks from LinkedIn. “Saw quiz” counts only sessions with a real LinkedIn referrer —
+            ad-verification bots and Audience-Network noise are excluded there, so it stays at or below clicks. Completed / checkout
+            count every real human (bots never fill out a quiz). % = of the previous stage.
           </p>
-        </Card>
+        </>
       )}
-    </div>
+    </Card>
   );
 }
