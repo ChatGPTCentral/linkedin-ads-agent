@@ -24,11 +24,24 @@ export async function GET(req: NextRequest) {
       group by 1
       order by fills desc`;
     const total = rows.reduce((s, r) => s + Number(r.fills), 0);
+
+    // Sales attributed to the ads: paid-LinkedIn submissions that actually paid.
+    const [sale] = await db`
+      select
+        count(*) filter (where lifetime_value_usd > 0)::int                       as sales,
+        coalesce(sum(lifetime_value_usd) filter (where lifetime_value_usd > 0), 0)::float as revenue
+      from public.submissions
+      where archived_at is null
+        and utm_source = any(${PAID_LINKEDIN_SOURCES})
+        and created_at >= now() - make_interval(days => ${days})`;
+
     return NextResponse.json({
       ok: true,
       days,
       sources: PAID_LINKEDIN_SOURCES,
       total,
+      sales: Number(sale?.sales ?? 0),
+      revenue: Number(sale?.revenue ?? 0),
       byRef: rows.map((r) => ({ utmRef: r.utm_ref, fills: Number(r.fills) })),
     });
   } catch (e) {

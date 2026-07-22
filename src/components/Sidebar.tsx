@@ -13,7 +13,6 @@ const I = (d: ReactElement) => (
 );
 const HomeIcon = () => I(<><path d="M3 12l9-9 9 9" /><path d="M5 10v10h14V10" /></>);
 const MapIcon = () => I(<><polygon points="1 6 8 3 16 6 23 3 23 18 16 21 8 18 1 21 1 6" /><line x1="8" y1="3" x2="8" y2="18" /><line x1="16" y1="6" x2="16" y2="21" /></>);
-const FunnelIcon = () => I(<><polygon points="3 4 21 4 14 12.5 14 20 10 22 10 12.5 3 4" /></>);
 const PlugIcon = () => I(<><path d="M9 2v6M15 2v6M6 8h12v3a6 6 0 0 1-12 0z" /><path d="M12 17v5" /></>);
 
 const MenuIcon = () => (
@@ -37,7 +36,6 @@ const NAV_GROUPS: NavGroup[] = [
     title: null,
     items: [
       { href: "/", label: "Cockpit", Icon: HomeIcon },
-      { href: "/funnel", label: "Funnel", Icon: FunnelIcon },
       { href: "/strategy", label: "Strategy", Icon: MapIcon },
     ],
   },

@@ -9,6 +9,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { Card, Stat, Chip, Callout, cn } from "./ui";
+import { FunnelChart } from "./FunnelChart";
 import { usd, num } from "@/lib/format";
 
 type Money = { amount?: string; currencyCode?: string } | null;
@@ -119,7 +120,7 @@ export function CampaignCockpit() {
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [perf, setPerf] = useState<Perf[]>([]);
   const [roasEstimated, setRoasEstimated] = useState(false);
-  const [quiz, setQuiz] = useState<{ total: number; byRef?: Record<string, number>; skipped?: string } | null>(null);
+  const [quiz, setQuiz] = useState<{ total: number; byRef?: Record<string, number>; sales?: number; revenue?: number; skipped?: string } | null>(null);
   const [recent, setRecent] = useState<RecentItem[] | null>(null);
   const [connected, setConnected] = useState<boolean | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -169,7 +170,7 @@ export function CampaignCockpit() {
         if (qd.ok) {
           const byRef: Record<string, number> = {};
           for (const r of (qd.byRef ?? []) as { utmRef: string; fills: number }[]) byRef[r.utmRef] = r.fills;
-          setQuiz({ total: qd.total ?? 0, byRef });
+          setQuiz({ total: qd.total ?? 0, byRef, sales: qd.sales ?? 0, revenue: qd.revenue ?? 0 });
         } else {
           setQuiz({ total: 0, skipped: qd.skipped ?? qd.error });
         }
@@ -253,6 +254,9 @@ export function CampaignCockpit() {
   // campaigns ÷ ad-attributed quiz-takers from the quiz DB.
   const quizTakers = quiz && !quiz.skipped ? quiz.total : null;
   const costPerQuiz = quizTakers && quizTakers > 0 && agg.spend > 0 ? agg.spend / quizTakers : null;
+  // Sales attributed to the ads (paid-LinkedIn submissions that paid) + revenue.
+  const adSales = quiz && !quiz.skipped ? quiz.sales ?? 0 : null;
+  const adRevenue = quiz && !quiz.skipped ? quiz.revenue ?? 0 : null;
 
   async function changeStatus(c: Campaign, status: "PAUSED" | "ACTIVE") {
     const verb = status === "PAUSED" ? "Pause" : "Resume";
@@ -317,10 +321,11 @@ export function CampaignCockpit() {
       {connected && (
         <>
           {/* Summary — scoped to the current campaigns only */}
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-            <Stat label="Spend" value={hasData ? usd(agg.spend, { cents: true }) : "—"} sub="these campaigns" accent />
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+            <Stat label="Sales from ads" value={adSales != null ? num(adSales) : "—"} sub={adRevenue != null ? `${usd(adRevenue)} revenue · 30d` : "30d"} accent />
+            <Stat label="Spend" value={hasData ? usd(agg.spend, { cents: true }) : "—"} sub="these campaigns" />
             <Stat label="Clicks" value={hasData ? num(agg.clicks) : "—"} sub="to the quiz" />
-            <Stat label="Quiz-takers" value={quizTakers != null ? num(quizTakers) : "—"} sub="from the ads · 30d" accent />
+            <Stat label="Quiz-takers" value={quizTakers != null ? num(quizTakers) : "—"} sub="from the ads · 30d" />
             <Stat label="Cost / quiz" value={costPerQuiz != null ? usd(costPerQuiz, { cents: true }) : "—"} sub="partial conversion" />
           </div>
           <p className="-mt-2 text-xs text-zinc-400">
@@ -328,6 +333,9 @@ export function CampaignCockpit() {
             {roasEstimated ? " (est.)" : ""}
             {quiz?.skipped ? " · set SUPABASE_DATABASE_URL in Vercel to light up cost-per-quiz" : ""}
           </p>
+
+          {/* Funnel chart — right below the key numbers */}
+          <FunnelChart />
 
           {/* Needs attention */}
           {allIssues.length > 0 && (
