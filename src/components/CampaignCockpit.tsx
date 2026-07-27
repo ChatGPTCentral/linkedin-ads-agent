@@ -10,6 +10,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { Card, Stat, Chip, Callout, cn } from "./ui";
 import { FunnelChart } from "./FunnelChart";
+import { ConversionsPanel } from "./ConversionsPanel";
 import { usd, num } from "@/lib/format";
 
 type Money = { amount?: string; currencyCode?: string } | null;
@@ -436,6 +437,9 @@ export function CampaignCockpit() {
               );
             })}
           </div>
+
+          {/* Conversion tracking rules — verify Quiz Completed + Purchase (CAPI) are live */}
+          <ConversionsPanel />
 
           {/* Recent ad-driven quiz activity — what each LinkedIn conversion maps to */}
           {recent && recent.length > 0 && (
