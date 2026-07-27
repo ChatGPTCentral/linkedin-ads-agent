@@ -16,12 +16,27 @@ export async function GET(req: NextRequest) {
 
   const url = new URL(req.url);
   const account = url.searchParams.get("account");
-  if (!account) return NextResponse.json({ error: "account_required (urn:li:sponsoredAccount:...)" }, { status: 400 });
+  // Scope to specific campaigns (comma-separated ids or URNs) — the ONLY way to
+  // get numbers for just your campaigns instead of the whole account. When
+  // present it takes precedence over `account`.
+  const campaignsParam = url.searchParams.get("campaigns");
+  if (!account && !campaignsParam)
+    return NextResponse.json({ error: "account_or_campaigns_required (account=urn:li:sponsoredAccount:… or campaigns=<id,id>)" }, { status: 400 });
   const wantValue = url.searchParams.get("includeValue") !== "0";
   // Pivot: CAMPAIGN (default) or CREATIVE for per-ad performance. pivotValues[0]
   // then holds the creative URN, so computed[].campaign is the creative id.
   const pivotParam = (url.searchParams.get("pivot") || "CAMPAIGN").toUpperCase();
   const pivot = ["CAMPAIGN", "CREATIVE", "CAMPAIGN_GROUP", "ACCOUNT"].includes(pivotParam) ? pivotParam : "CAMPAIGN";
+
+  // Finder: campaigns=List(...) when scoping to campaigns, else accounts=List(...).
+  const finder = campaignsParam
+    ? `campaigns=List(${campaignsParam
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean)
+        .map((s) => encodeURIComponent(s.startsWith("urn:") ? s : `urn:li:sponsoredCampaign:${s}`))
+        .join(",")})`
+    : `accounts=List(${encodeURIComponent(account as string)})`;
 
   const days = Math.min(Math.max(Number(url.searchParams.get("days")) || 30, 1), 365);
   const end = new Date();
@@ -30,7 +45,7 @@ export async function GET(req: NextRequest) {
     `dateRange=(start:(year:${start.getUTCFullYear()},month:${start.getUTCMonth() + 1},day:${start.getUTCDate()}),` +
     `end:(year:${end.getUTCFullYear()},month:${end.getUTCMonth() + 1},day:${end.getUTCDate()}))`;
   const build = (fields: string) =>
-    `q=analytics&${dr}&timeGranularity=ALL&pivot=${pivot}&accounts=List(${encodeURIComponent(account)})&fields=${fields}`;
+    `q=analytics&${dr}&timeGranularity=ALL&pivot=${pivot}&${finder}&fields=${fields}`;
   const fetchAnalytics = (withValue: boolean) =>
     liGet(`/adAnalytics?${build(withValue ? `${BASE_FIELDS},conversionValueInLocalCurrency` : BASE_FIELDS)}`, t.accessToken);
 
