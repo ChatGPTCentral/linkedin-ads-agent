@@ -10,13 +10,14 @@
 import { useState } from "react";
 import { Card } from "./ui";
 
-const QUIZ_COMPLETED_URN = "urn:li:conversion:27150700"; // Quiz Completed (LEAD)
+const QUIZ_COMPLETED_URN = "urn:li:conversion:27150700"; // Quiz Completed (LEAD) — optimization signal
+const PURCHASE_CAPI_URN = "urn:li:conversion:27150724"; // Purchase — Stripe (CAPI) — track + learn toward buyers
 const DEST_URL = "quiz.thecentral.ai/quiz-v2?utm_source=li_ads&utm_ref=cold";
 
 type CreateResult = {
   ok?: boolean;
   created?: { campaignGroupUrn?: string | null; campaignUrn?: string | null };
-  conversionAssociation?: { ok: boolean; status?: number; error?: string } | null;
+  conversionAssociations?: { conversion: string; ok: boolean; status?: number; error?: string }[];
   objectiveType?: string;
 };
 
@@ -44,10 +45,11 @@ export function CreateConversionCampaign() {
         body: JSON.stringify({
           audienceId: "core",
           objective: "WEBSITE_CONVERSION",
-          conversionUrn: QUIZ_COMPLETED_URN,
+          conversionUrn: QUIZ_COMPLETED_URN, // optimize toward completions (has signal)
+          conversionUrns: [PURCHASE_CAPI_URN], // + track/learn toward real buyers
           optimizationTargetType: "MAX_CONVERSION",
           dailyBudgetUsd: budget,
-          name: "01 · COLD · Quiz-Optimized",
+          name: "01 · COLD · Conversion (Quiz + Purchase)",
         }),
       });
       const d = await r.json();
@@ -64,16 +66,18 @@ export function CreateConversionCampaign() {
   }
 
   const campaignId = result?.created?.campaignUrn?.split(":").pop() ?? null;
-  const convOk = result?.conversionAssociation?.ok;
+  const convs = result?.conversionAssociations ?? [];
+  const allConvOk = convs.length > 0 && convs.every((c) => c.ok);
 
   return (
     <Card title="Create Quiz-optimized campaign" subtitle="Optimizes for completions, not clicks" className="!p-4">
       {!result && (
         <>
           <p className="text-[13px] leading-snug text-zinc-600">
-            Builds a <strong>PAUSED</strong> Website-Conversions campaign on your Core ICP that tells LinkedIn to find people who{" "}
-            <strong>complete the quiz</strong> (Quiz Completed · 27150700) — not cheap clicks. Audience Network off. Nothing spends
-            until you add a creative and launch it in Campaign Manager.
+            Builds a <strong>PAUSED</strong> Website-Conversions campaign on your Core ICP. It <strong>optimizes toward Quiz
+            Completed</strong> (the deepest signal with enough volume) and also <strong>tracks the Purchase (CAPI)</strong>{" "}
+            conversion — so the moment real buyers appear, LinkedIn learns to chase buyer-lookalikes, not cheap clicks. Audience
+            Network off. Nothing spends until you add a creative and launch in Campaign Manager.
           </p>
           <div className="mt-3 flex items-center gap-3">
             <label className="text-xs text-zinc-500">
@@ -110,7 +114,7 @@ export function CreateConversionCampaign() {
         <div className="text-[13px] leading-relaxed text-zinc-700">
           <div className="font-semibold text-green-700">✓ Campaign created (PAUSED){campaignId ? ` · #${campaignId}` : ""}</div>
           <div className="mt-1">
-            Quiz-Completed optimization {convOk ? <span className="text-green-700">attached ✓</span> : <span className="text-amber-700">not attached — attach it in Campaign Manager</span>}
+            Conversions {allConvOk ? <span className="text-green-700">attached ✓ (Quiz Completed + Purchase)</span> : <span className="text-amber-700">partly attached — check them in Campaign Manager</span>}
           </div>
           <div className="mt-3 border-t border-zinc-100 pt-2">
             <div className="mb-1 font-medium text-zinc-800">Finish in Campaign Manager, then launch:</div>
