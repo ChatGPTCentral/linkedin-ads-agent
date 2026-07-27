@@ -18,14 +18,19 @@ export async function GET(req: NextRequest) {
   const account = url.searchParams.get("account");
   if (!account) return NextResponse.json({ error: "account_required (urn:li:sponsoredAccount:...)" }, { status: 400 });
   const wantValue = url.searchParams.get("includeValue") !== "0";
+  // Pivot: CAMPAIGN (default) or CREATIVE for per-ad performance. pivotValues[0]
+  // then holds the creative URN, so computed[].campaign is the creative id.
+  const pivotParam = (url.searchParams.get("pivot") || "CAMPAIGN").toUpperCase();
+  const pivot = ["CAMPAIGN", "CREATIVE", "CAMPAIGN_GROUP", "ACCOUNT"].includes(pivotParam) ? pivotParam : "CAMPAIGN";
 
+  const days = Math.min(Math.max(Number(url.searchParams.get("days")) || 30, 1), 365);
   const end = new Date();
-  const start = new Date(Date.now() - 30 * 864e5);
+  const start = new Date(Date.now() - days * 864e5);
   const dr =
     `dateRange=(start:(year:${start.getUTCFullYear()},month:${start.getUTCMonth() + 1},day:${start.getUTCDate()}),` +
     `end:(year:${end.getUTCFullYear()},month:${end.getUTCMonth() + 1},day:${end.getUTCDate()}))`;
   const build = (fields: string) =>
-    `q=analytics&${dr}&timeGranularity=ALL&pivot=CAMPAIGN&accounts=List(${encodeURIComponent(account)})&fields=${fields}`;
+    `q=analytics&${dr}&timeGranularity=ALL&pivot=${pivot}&accounts=List(${encodeURIComponent(account)})&fields=${fields}`;
   const fetchAnalytics = (withValue: boolean) =>
     liGet(`/adAnalytics?${build(withValue ? `${BASE_FIELDS},conversionValueInLocalCurrency` : BASE_FIELDS)}`, t.accessToken);
 
@@ -42,7 +47,7 @@ export async function GET(req: NextRequest) {
     }
     const raw = (await res.json()) as { elements?: unknown[] };
     const metrics = computeMetrics(raw.elements ?? []);
-    return NextResponse.json({ ok: true, valueIncluded, ...metrics, raw });
+    return NextResponse.json({ ok: true, pivot, days, valueIncluded, ...metrics, raw });
   } catch (e) {
     return NextResponse.json({ error: (e as Error).message }, { status: 502 });
   }
