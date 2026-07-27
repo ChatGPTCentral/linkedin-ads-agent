@@ -101,6 +101,7 @@ export async function POST(req: NextRequest) {
     dailyBudgetUsd,
     objective,
     conversionUrn,
+    conversionUrns,
     optimizationTargetType,
     includeSegments,
     excludeSegments,
@@ -112,6 +113,7 @@ export async function POST(req: NextRequest) {
     dailyBudgetUsd?: number;
     objective?: "WEBSITE_CONVERSION" | "WEBSITE_VISIT";
     conversionUrn?: string;
+    conversionUrns?: string[];
     optimizationTargetType?: string;
     includeSegments?: string[];
     excludeSegments?: string[];
@@ -191,14 +193,20 @@ export async function POST(req: NextRequest) {
   const campaignId = createdId(cRes);
   const campaignUrn = campaignId ? `urn:li:sponsoredCampaign:${campaignId}` : null;
 
-  // 4) Associate the conversion so the campaign can optimize for purchases.
-  let conversionAssociation: { ok: boolean; status?: number; error?: string } | null = null;
-  if (campaignUrn && conversionUrn) {
-    const key = `(campaign:${encodeURIComponent(campaignUrn)},conversion:${encodeURIComponent(conversionUrn)})`;
-    const aRes = await liPut(`/campaignConversions/${key}`, {}, t.accessToken);
-    conversionAssociation = aRes.ok
-      ? { ok: true }
-      : { ok: false, status: aRes.status, error: (await aRes.text()).slice(0, 300) };
+  // 4) Associate every requested conversion. The first (conversionUrn) is the
+  //    optimization signal (e.g. Quiz Completed); the rest are attached for
+  //    tracking + learning (e.g. Purchase — Stripe/CAPI) so LinkedIn can shift
+  //    toward real buyers as purchases start firing.
+  const allConversions = Array.from(new Set([conversionUrn, ...(conversionUrns ?? [])].filter(Boolean))) as string[];
+  const conversionAssociations: { conversion: string; ok: boolean; status?: number; error?: string }[] = [];
+  if (campaignUrn) {
+    for (const conv of allConversions) {
+      const key = `(campaign:${encodeURIComponent(campaignUrn)},conversion:${encodeURIComponent(conv)})`;
+      const aRes = await liPut(`/campaignConversions/${key}`, {}, t.accessToken);
+      conversionAssociations.push(
+        aRes.ok ? { conversion: conv, ok: true } : { conversion: conv, ok: false, status: aRes.status, error: (await aRes.text()).slice(0, 300) }
+      );
+    }
   }
 
   const copy = AD_COPY.find((v) => v.id === copyId);
@@ -207,8 +215,8 @@ export async function POST(req: NextRequest) {
     status: "PAUSED",
     objectiveType,
     created: { campaignGroupUrn, campaignUrn },
-    conversionAssociation,
-    note: "Created PAUSED. Add a creative (copy below), review targeting + conversion, then launch in Campaign Manager.",
+    conversionAssociations,
+    note: "Created PAUSED. Add a creative (copy below), review targeting + conversions, then launch in Campaign Manager.",
     suggestedCopy: copy ?? null,
     unresolvedFacets: include.flatMap((f) => f.unresolved ?? []),
     targetingCriteria,
