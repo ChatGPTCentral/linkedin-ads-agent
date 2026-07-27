@@ -128,9 +128,11 @@ export async function POST(req: NextRequest) {
   const t = await getValidToken();
   if ("error" in t) return NextResponse.json({ error: t.error }, { status: 401 });
 
-  // Scheduled to start tomorrow; the campaign stays PAUSED so nothing spends.
-  // Satisfies LinkedIn's required runSchedule field.
-  const startAt = Date.now() + 24 * 60 * 60 * 1000;
+  // Start TODAY — a small forward buffer so LinkedIn doesn't reject a start
+  // that's already in the past by the time it processes the request. The
+  // campaign is created PAUSED, so it won't deliver until you launch it; once
+  // launched (today or later), a start time in the past just means "begin now".
+  const startAt = Date.now() + 10 * 60 * 1000;
 
   // 1) Campaign group (ACTIVE container — the campaign inside stays PAUSED, so
   //    nothing spends; LinkedIn forbids a PAUSED campaign under a DRAFT group).
