@@ -104,6 +104,7 @@ export async function POST(req: NextRequest) {
     optimizationTargetType,
     includeSegments,
     excludeSegments,
+    name,
   } = (await req.json()) as {
     audienceId?: string;
     copyId?: string;
@@ -114,10 +115,13 @@ export async function POST(req: NextRequest) {
     optimizationTargetType?: string;
     includeSegments?: string[];
     excludeSegments?: string[];
+    name?: string;
   };
 
   const audience = AUDIENCES.find((a) => a.id === audienceId);
   if (!audience) return NextResponse.json({ error: "unknown_audience" }, { status: 400 });
+  // Custom name when provided, else the default "[Designer] <audience>".
+  const label = name?.trim() || `[Designer] ${audience.name}`;
   const account = adAccountUrn || DEFAULT_AD_ACCOUNT_URN;
   const accountId = account.split(":").pop() ?? account; // numeric id for path-scoped endpoints
 
@@ -134,7 +138,7 @@ export async function POST(req: NextRequest) {
     `/adAccounts/${accountId}/adCampaignGroups`,
     {
       account,
-      name: `[Designer] ${audience.name}`,
+      name: label,
       status: "ACTIVE",
       runSchedule: { start: startAt },
     },
@@ -158,7 +162,7 @@ export async function POST(req: NextRequest) {
   const campaign: Record<string, unknown> = {
     account,
     campaignGroup: campaignGroupUrn,
-    name: `[Designer] ${audience.name}`,
+    name: label,
     type: "SPONSORED_UPDATES",
     costType: "CPM",
     dailyBudget: { amount: String(budget), currencyCode: "USD" },

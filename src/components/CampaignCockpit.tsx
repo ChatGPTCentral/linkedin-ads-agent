@@ -11,6 +11,7 @@ import Link from "next/link";
 import { Card, Stat, Chip, Callout, cn } from "./ui";
 import { FunnelChart } from "./FunnelChart";
 import { ConversionsPanel } from "./ConversionsPanel";
+import { CreateConversionCampaign } from "./CreateConversionCampaign";
 import { usd, num } from "@/lib/format";
 
 type Money = { amount?: string; currencyCode?: string } | null;
@@ -440,6 +441,9 @@ export function CampaignCockpit() {
 
           {/* Conversion tracking rules — verify Quiz Completed + Purchase (CAPI) are live */}
           <ConversionsPanel />
+
+          {/* One-tap: create the Quiz-optimized cold campaign (PAUSED) */}
+          <CreateConversionCampaign />
 
           {/* Recent ad-driven quiz activity — what each LinkedIn conversion maps to */}
           {recent && recent.length > 0 && (
