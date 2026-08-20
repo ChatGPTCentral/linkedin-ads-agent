@@ -1,8 +1,8 @@
-import { NextResponse } from "next/server";
-import { getValidToken } from "@/lib/linkedin/client";
+import { NextRequest, NextResponse } from "next/server";
+import { getValidToken, liGet } from "@/lib/linkedin/client";
 import { getLinkedInEnv } from "@/lib/linkedin/config";
 import { readStoredToken } from "@/lib/linkedin/tokenStore";
-import { writeServerToken, clearServerToken, serverTokenHealth } from "@/lib/linkedin/serverToken";
+import { writeServerToken, clearServerToken, serverTokenHealth, getAgentToken } from "@/lib/linkedin/serverToken";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -12,9 +12,24 @@ export const dynamic = "force-dynamic";
 // logged-in cookie session.
 
 // GET: non-sensitive health of autonomous mode (never returns the token).
-export async function GET() {
+// ?probe=1 also does a live browser-less LinkedIn call with the SERVER token,
+// returning only reachability (no account data) — proof autonomous mode works.
+export async function GET(req: NextRequest) {
   const health = await serverTokenHealth();
-  return NextResponse.json({ ok: true, autonomous: health });
+  let probe: { reachedLinkedIn: boolean; status?: number; error?: string } | undefined;
+  if (req.nextUrl.searchParams.get("probe")) {
+    const t = await getAgentToken();
+    if ("error" in t) probe = { reachedLinkedIn: false, error: t.error };
+    else {
+      try {
+        const res = await liGet("/adAccounts?q=search", t.accessToken);
+        probe = { reachedLinkedIn: res.ok, status: res.status };
+      } catch (e) {
+        probe = { reachedLinkedIn: false, error: (e as Error).message };
+      }
+    }
+  }
+  return NextResponse.json({ ok: true, autonomous: health, probe });
 }
 
 // POST: enable — copy the current (fresh) cookie token into the server store.
