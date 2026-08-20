@@ -151,13 +151,12 @@ async function uploadCreative(a: Action, accountId: string, token: string): Prom
   steps.push({ step: "createPost", ok: postRes.ok && !!postUrn, postUrn, status: postRes.status, error: postRes.ok ? undefined : (await postRes.text()).slice(0, 300) });
   if (!postUrn) return { ok: false, error: "create_post_failed", steps };
 
-  // E) create the creative under the campaign. Don't set intendedStatus here —
-  // a brand-new creative must clear LinkedIn's review first (reviewStatus ->
-  // APPROVED); setting it to PAUSED before that is rejected. It stays pending
-  // review (no delivery) until the operator reviews + launches it — which is
-  // the same "created, nothing spends" guarantee we want anyway.
+  // E) create the creative under the campaign. intendedStatus is required but
+  // can't be PAUSED/ACTIVE pre-review ("transition not allowed from null" until
+  // reviewStatus is APPROVED) — DRAFT is the valid pre-review starting state and
+  // guarantees no delivery until the operator reviews + launches it.
   const campaignUrn = `urn:li:sponsoredCampaign:${campaignId}`;
-  const crRes = await liPost(`/adAccounts/${accountId}/creatives`, { campaign: campaignUrn, content: { reference: postUrn } }, token);
+  const crRes = await liPost(`/adAccounts/${accountId}/creatives`, { campaign: campaignUrn, content: { reference: postUrn }, intendedStatus: "DRAFT" }, token);
   const creativeUrn = crRes.headers.get("x-restli-id") || crRes.headers.get("x-linkedin-id");
   steps.push({ step: "createCreative", ok: crRes.ok, creativeUrn, status: crRes.status, error: crRes.ok ? undefined : (await crRes.text()).slice(0, 300) });
   if (!crRes.ok) return { ok: false, error: "create_creative_failed", steps };
