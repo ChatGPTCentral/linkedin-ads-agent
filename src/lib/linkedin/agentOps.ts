@@ -1,5 +1,5 @@
 import { getAgentToken } from "./serverToken";
-import { liGet, liPatch } from "./client";
+import { liGet, liPost, liPatch } from "./client";
 import { DEFAULT_AD_ACCOUNT_URN } from "./config";
 import { computeMetrics } from "./metrics";
 import { getQuizDb } from "@/lib/quiz/db";
@@ -75,11 +75,87 @@ export async function takeSnapshot(days = 30) {
 }
 
 // ---- Action queue ----
-const ALLOWED = new Set(["pause_creative", "resume_creative", "pause_campaign", "resume_campaign", "set_campaign_budget"]);
+const ALLOWED = new Set([
+  "pause_creative",
+  "resume_creative",
+  "pause_campaign",
+  "resume_campaign",
+  "set_campaign_budget",
+  "upload_creative",
+]);
 const MAX_DAILY_BUDGET_USD = 50; // hard guardrail
+const BASE_URL = process.env.PUBLIC_BASE_URL || "https://linkedin-ads-agent.vercel.app";
 
 type Action = { id: number; kind: string; target_id: string; params: Record<string, unknown> | null };
-type ApplyResult = { ok: boolean; rejected?: boolean; status?: number; error?: string };
+type ApplyResult = { ok: boolean; rejected?: boolean; status?: number; error?: string; steps?: unknown[]; creativeUrn?: string | null };
+
+// Full single-image Sponsored Content upload: image asset -> dark post -> creative
+// linked to the campaign (PAUSED). Returns per-step results so one test pinpoints
+// any API-shape issue. LinkedIn's creative API is finicky; expect to iterate.
+async function uploadCreative(a: Action, accountId: string, token: string): Promise<ApplyResult> {
+  const steps: Record<string, unknown>[] = [];
+  const p = a.params ?? {};
+  const campaignId = a.target_id.split(":").pop();
+  const imageFile = String(p.image ?? "");
+  const text = String(p.text ?? "");
+  const altText = String(p.altText ?? "AI Central — AI readiness quiz").slice(0, 290);
+  if (!imageFile) return { ok: false, rejected: true, error: "missing_image", steps };
+
+  // A) organization URN (the ad's author / image owner)
+  const acctRes = await liGet(`/adAccounts/${accountId}`, token);
+  const acct = (await acctRes.json().catch(() => ({}))) as { reference?: string };
+  const orgUrn = acct.reference;
+  steps.push({ step: "account", ok: acctRes.ok && !!orgUrn, orgUrn, status: acctRes.status });
+  if (!orgUrn) return { ok: false, error: "no_org_urn", steps };
+
+  // B) initialize image upload
+  const initRes = await liPost(`/images?action=initializeUpload`, { initializeUploadRequest: { owner: orgUrn } }, token);
+  const init = (await initRes.json().catch(() => ({}))) as { value?: { uploadUrl?: string; image?: string } };
+  const uploadUrl = init.value?.uploadUrl;
+  const imageUrn = init.value?.image;
+  steps.push({ step: "initImage", ok: initRes.ok && !!uploadUrl, imageUrn, status: initRes.status, error: initRes.ok ? undefined : JSON.stringify(init).slice(0, 300) });
+  if (!uploadUrl || !imageUrn) return { ok: false, error: "init_image_failed", steps };
+
+  // C) upload the bytes (fetched from our own deployed public URL)
+  const imgRes = await fetch(`${BASE_URL}/creatives/${imageFile}`);
+  if (!imgRes.ok) {
+    steps.push({ step: "fetchImage", ok: false, status: imgRes.status });
+    return { ok: false, error: "image_fetch_failed", steps };
+  }
+  const bytes = Buffer.from(await imgRes.arrayBuffer());
+  const up = await fetch(uploadUrl, { method: "PUT", headers: { Authorization: `Bearer ${token}`, "Content-Type": "image/png" }, body: bytes });
+  steps.push({ step: "uploadBytes", ok: up.ok, status: up.status, bytes: bytes.length, error: up.ok ? undefined : (await up.text()).slice(0, 200) });
+  if (!up.ok) return { ok: false, error: "upload_bytes_failed", steps };
+
+  // give LinkedIn a moment to process the image before referencing it
+  await new Promise((r) => setTimeout(r, 3000));
+
+  // D) create a dark post (feedDistribution NONE) with the image
+  const postRes = await liPost(
+    `/posts`,
+    {
+      author: orgUrn,
+      commentary: text,
+      visibility: "PUBLIC",
+      distribution: { feedDistribution: "NONE", targetEntities: [], thirdPartyDistributionChannels: [] },
+      content: { media: { id: imageUrn, altText } },
+      lifecycleState: "PUBLISHED",
+      isReshareDisabledByAuthor: false,
+    },
+    token
+  );
+  const postUrn = postRes.headers.get("x-restli-id") || postRes.headers.get("x-linkedin-id");
+  steps.push({ step: "createPost", ok: postRes.ok && !!postUrn, postUrn, status: postRes.status, error: postRes.ok ? undefined : (await postRes.text()).slice(0, 300) });
+  if (!postUrn) return { ok: false, error: "create_post_failed", steps };
+
+  // E) create the creative under the campaign (PAUSED, for human launch)
+  const campaignUrn = `urn:li:sponsoredCampaign:${campaignId}`;
+  const crRes = await liPost(`/adAccounts/${accountId}/creatives`, { campaign: campaignUrn, content: { reference: postUrn }, intendedStatus: "PAUSED" }, token);
+  const creativeUrn = crRes.headers.get("x-restli-id") || crRes.headers.get("x-linkedin-id");
+  steps.push({ step: "createCreative", ok: crRes.ok, creativeUrn, status: crRes.status, error: crRes.ok ? undefined : (await crRes.text()).slice(0, 300) });
+  if (!crRes.ok) return { ok: false, error: "create_creative_failed", steps };
+  return { ok: true, steps, creativeUrn };
+}
 
 async function applyAction(a: Action, accountId: string, token: string): Promise<ApplyResult> {
   if (!ALLOWED.has(a.kind)) return { ok: false, rejected: true, error: "kind_not_allowed" };
@@ -103,6 +179,9 @@ async function applyAction(a: Action, accountId: string, token: string): Promise
     const id = a.target_id.split(":").pop();
     const res = await liPatch(`/adAccounts/${accountId}/adCampaigns/${id}`, { dailyBudget: { amount: String(amount), currencyCode: "USD" } }, token);
     return res.ok ? { ok: true, status: res.status } : { ok: false, status: res.status, error: (await res.text()).slice(0, 300) };
+  }
+  if (a.kind === "upload_creative") {
+    return uploadCreative(a, accountId, token);
   }
   return { ok: false, rejected: true, error: "unhandled" };
 }
