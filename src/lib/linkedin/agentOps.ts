@@ -130,7 +130,9 @@ async function uploadCreative(a: Action, accountId: string, token: string): Prom
   // give LinkedIn a moment to process the image before referencing it
   await new Promise((r) => setTimeout(r, 3000));
 
-  // D) create a dark post (feedDistribution NONE) with the image
+  // D) create a dark post (feedDistribution NONE) with the image. Direct
+  // Sponsored Content posts must declare which ad account they belong to via
+  // adContext.dscAdAccount (LinkedIn: MISSING_REQUIRED_FIELD_FOR_DSC otherwise).
   const postRes = await liPost(
     `/posts`,
     {
@@ -141,6 +143,7 @@ async function uploadCreative(a: Action, accountId: string, token: string): Prom
       content: { media: { id: imageUrn, altText } },
       lifecycleState: "PUBLISHED",
       isReshareDisabledByAuthor: false,
+      adContext: { dscAdAccount: `urn:li:sponsoredAccount:${accountId}` },
     },
     token
   );
