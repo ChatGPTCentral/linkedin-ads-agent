@@ -12,6 +12,7 @@ import { Card, Stat, Chip, Callout, cn } from "./ui";
 import { FunnelChart } from "./FunnelChart";
 import { ConversionsPanel } from "./ConversionsPanel";
 import { CreateConversionCampaign } from "./CreateConversionCampaign";
+import { AgentModePanel } from "./AgentModePanel";
 import { usd, num } from "@/lib/format";
 
 type Money = { amount?: string; currencyCode?: string } | null;
@@ -438,6 +439,9 @@ export function CampaignCockpit() {
               );
             })}
           </div>
+
+          {/* Autonomous mode — seed the server token so I can manage without the browser */}
+          <AgentModePanel />
 
           {/* Conversion tracking rules — verify Quiz Completed + Purchase (CAPI) are live */}
           <ConversionsPanel />
