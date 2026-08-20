@@ -81,5 +81,5 @@ export async function GET() {
     /* snapshot is best-effort */
   }
 
-  return NextResponse.json({ ok: true, stored, takenAt, ...payload });
+  return NextResponse.json({ ok: true, stored, ...payload });
 }
