@@ -30,12 +30,22 @@ export const LINKEDIN = {
   version: resolveVersion(process.env.LINKEDIN_API_VERSION),
   restliVersion: "2.0.0",
   /** Scopes: read/write ads (campaigns), reporting, conversions (read/create/attach + send
-   *  events with the operator token), org posts + page analytics (feed intelligence).
+   *  events with the operator token), org posts + page analytics (feed intelligence),
+   *  w_organization_social (upload images as the org + create dark posts for Sponsored
+   *  Content creatives — required by the agent's upload_creative flow).
    *  Only request scopes GRANTED to the LinkedIn app — requesting an ungranted one makes LinkedIn
    *  hard-fail the whole consent screen ("Bummer, something went wrong"). rw_dmp_segments (Matched
    *  Audiences) is not granted yet: request it on developer.linkedin.com, add it back here, and
    *  Disconnect → Connect to re-consent. */
-  scopes: ["r_ads", "rw_ads", "r_ads_reporting", "rw_conversions", "r_organization_social", "r_organization_admin"],
+  scopes: [
+    "r_ads",
+    "rw_ads",
+    "r_ads_reporting",
+    "rw_conversions",
+    "r_organization_social",
+    "r_organization_admin",
+    "w_organization_social",
+  ],
 } as const;
 
 // Default ad account, so the user never has to enter it. Override with the
