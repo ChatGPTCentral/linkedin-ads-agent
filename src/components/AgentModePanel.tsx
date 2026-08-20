@@ -13,6 +13,7 @@ export function AgentModePanel() {
   const [health, setHealth] = useState<Health | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [queueMsg, setQueueMsg] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
@@ -43,6 +44,22 @@ export function AgentModePanel() {
       const d = await r.json();
       if (!r.ok || d.error) setError(String(d.error ?? `failed (${r.status})`));
       else setHealth(d.autonomous ?? (enable ? { enabled: true } : { enabled: false }));
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function runQueue() {
+    setBusy(true);
+    setError(null);
+    setQueueMsg(null);
+    try {
+      const r = await fetch("/api/agent/execute", { method: "POST" });
+      const d = await r.json();
+      if (!r.ok || d.error) setError(String(d.error ?? `failed (${r.status})`));
+      else setQueueMsg(`Processed ${d.processed ?? 0} action(s).`);
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -82,15 +99,25 @@ export function AgentModePanel() {
             {busy ? "Enabling…" : "Enable autonomous mode"}
           </button>
         ) : (
-          <button
-            onClick={() => toggle(false)}
-            disabled={busy}
-            className="inline-flex h-10 items-center border border-zinc-300 bg-white px-4 text-sm font-medium text-zinc-800 active:scale-[0.98] disabled:opacity-50"
-          >
-            {busy ? "…" : "Disable"}
-          </button>
+          <>
+            <button
+              onClick={() => runQueue()}
+              disabled={busy}
+              className="inline-flex h-10 items-center bg-indigo-600 px-4 text-sm font-medium text-white active:scale-[0.98] disabled:opacity-50"
+            >
+              {busy ? "Running…" : "Run queued actions"}
+            </button>
+            <button
+              onClick={() => toggle(false)}
+              disabled={busy}
+              className="inline-flex h-10 items-center border border-zinc-300 bg-white px-4 text-sm font-medium text-zinc-800 active:scale-[0.98] disabled:opacity-50"
+            >
+              {busy ? "…" : "Disable"}
+            </button>
+          </>
         )}
       </div>
+      {queueMsg && <div className="mt-2 text-[13px] text-green-700">{queueMsg}</div>}
     </Card>
   );
 }
