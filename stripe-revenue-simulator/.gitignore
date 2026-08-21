@@ -1,0 +1,4 @@
+# Never commit real Stripe exports — they contain customer PII (emails, names).
+# The tool reads the CSV in-browser only; nothing here needs the real file.
+*.csv
+!sample-subscriptions.csv
