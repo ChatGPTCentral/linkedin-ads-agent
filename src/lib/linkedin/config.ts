@@ -32,11 +32,10 @@ export const LINKEDIN = {
   /** Scopes: read/write ads (campaigns), reporting, conversions (read/create/attach + send
    *  events with the operator token), org posts + page analytics (feed intelligence),
    *  w_organization_social (upload images as the org + create dark posts for Sponsored
-   *  Content creatives — required by the agent's upload_creative flow).
+   *  Content creatives — required by the agent's upload_creative flow), rw_dmp_segments
+   *  (Matched Audiences — upload contact lists, build retargeting/predictive audiences).
    *  Only request scopes GRANTED to the LinkedIn app — requesting an ungranted one makes LinkedIn
-   *  hard-fail the whole consent screen ("Bummer, something went wrong"). rw_dmp_segments (Matched
-   *  Audiences) is not granted yet: request it on developer.linkedin.com, add it back here, and
-   *  Disconnect → Connect to re-consent. */
+   *  hard-fail the whole consent screen ("Bummer, something went wrong"). */
   scopes: [
     "r_ads",
     "rw_ads",
@@ -45,6 +44,7 @@ export const LINKEDIN = {
     "r_organization_social",
     "r_organization_admin",
     "w_organization_social",
+    "rw_dmp_segments",
   ],
 } as const;
 
