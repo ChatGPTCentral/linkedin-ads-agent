@@ -1,7 +1,8 @@
 import { getAgentToken } from "./serverToken";
 import { liGet, liPost, liPatch } from "./client";
-import { DEFAULT_AD_ACCOUNT_URN } from "./config";
+import { DEFAULT_AD_ACCOUNT_URN, LINKEDIN } from "./config";
 import { computeMetrics } from "./metrics";
+import { sha256Email } from "./capi";
 import { getQuizDb } from "@/lib/quiz/db";
 
 // Shared autonomous-ops logic, reused by /api/agent/report, /api/agent/execute
@@ -82,12 +83,21 @@ const ALLOWED = new Set([
   "resume_campaign",
   "set_campaign_budget",
   "upload_creative",
+  "upload_audience",
 ]);
 const MAX_DAILY_BUDGET_USD = 50; // hard guardrail
 const BASE_URL = process.env.PUBLIC_BASE_URL || "https://linkedin-ads-agent.vercel.app";
 
 type Action = { id: number; kind: string; target_id: string; params: Record<string, unknown> | null };
-type ApplyResult = { ok: boolean; rejected?: boolean; status?: number; error?: string; steps?: unknown[]; creativeUrn?: string | null };
+type ApplyResult = {
+  ok: boolean;
+  rejected?: boolean;
+  status?: number;
+  error?: string;
+  steps?: unknown[];
+  creativeUrn?: string | null;
+  segmentId?: number | null;
+};
 
 // Full single-image Sponsored Content upload: image asset -> dark post -> creative
 // linked to the campaign (PAUSED). Returns per-step results so one test pinpoints
@@ -163,6 +173,62 @@ async function uploadCreative(a: Action, accountId: string, token: string): Prom
   return { ok: true, steps, creativeUrn };
 }
 
+// Matched Audience (DMP Segment) upload — streaming method, not CSV. Reads a
+// prepared, deduped email list from public.ops_audience_seed (list_name =
+// params.listName), creates an empty USER segment, waits 5s (LinkedIn
+// requirement), then streams every email — hashed SHA-256 — in ONE batch (our
+// lists are all under the 5000-per-batch cap). LinkedIn takes up to 48h to
+// match + approve the segment before it's usable in campaign targeting.
+async function uploadAudience(a: Action, accountId: string, token: string): Promise<ApplyResult> {
+  const steps: Record<string, unknown>[] = [];
+  const p = a.params ?? {};
+  const listName = String(p.listName ?? "");
+  const name = String(p.name ?? listName);
+  const account = `urn:li:sponsoredAccount:${accountId}`;
+  if (!listName) return { ok: false, rejected: true, error: "missing_listName", steps };
+
+  const db = getQuizDb();
+  if (!db) return { ok: false, error: "no_db", steps };
+  const rows = (await db`select email from public.ops_audience_seed where list_name = ${listName}`) as unknown as { email: string }[];
+  const emails = rows.map((r) => r.email).filter(Boolean);
+  steps.push({ step: "readSeedList", ok: emails.length > 0, count: emails.length });
+  if (!emails.length) return { ok: false, error: "empty_list", steps };
+  if (emails.length > 5000) return { ok: false, rejected: true, error: "list_too_large_for_single_batch", steps };
+
+  // A) create the empty segment
+  const segRes = await liPost(
+    "/dmpSegments",
+    { name, account, type: "USER", sourcePlatform: "DIRECT_API", destinations: [{ destination: "LINKEDIN" }] },
+    token
+  );
+  const segIdRaw = segRes.headers.get("x-restli-id") || segRes.headers.get("x-linkedin-id");
+  const segmentId = segIdRaw ? Number(segIdRaw) : null;
+  steps.push({ step: "createSegment", ok: segRes.ok && !!segmentId, segmentId, status: segRes.status, error: segRes.ok ? undefined : (await segRes.text()).slice(0, 300) });
+  if (!segmentId) return { ok: false, error: "create_segment_failed", steps };
+
+  // B) LinkedIn requires a short wait before the segment accepts users
+  await new Promise((r) => setTimeout(r, 5000));
+
+  // C) stream every email, hashed, in one BATCH_CREATE call
+  const elements = emails.map((email) => ({ action: "ADD", userIds: [{ idType: "SHA256_EMAIL", idValue: sha256Email(email) }] }));
+  const usersRes = await fetch(`${LINKEDIN.apiBase}/dmpSegments/${segmentId}/users`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+      "LinkedIn-Version": LINKEDIN.version,
+      "X-Restli-Protocol-Version": "2.0.0",
+      "X-RestLi-Method": "BATCH_CREATE",
+    },
+    body: JSON.stringify({ elements }),
+  });
+  const usersOk = usersRes.ok;
+  steps.push({ step: "streamUsers", ok: usersOk, status: usersRes.status, sent: elements.length, error: usersOk ? undefined : (await usersRes.text()).slice(0, 400) });
+  if (!usersOk) return { ok: false, error: "stream_users_failed", steps, segmentId };
+
+  return { ok: true, steps, segmentId };
+}
+
 async function applyAction(a: Action, accountId: string, token: string): Promise<ApplyResult> {
   if (!ALLOWED.has(a.kind)) return { ok: false, rejected: true, error: "kind_not_allowed" };
 
@@ -188,6 +254,9 @@ async function applyAction(a: Action, accountId: string, token: string): Promise
   }
   if (a.kind === "upload_creative") {
     return uploadCreative(a, accountId, token);
+  }
+  if (a.kind === "upload_audience") {
+    return uploadAudience(a, accountId, token);
   }
   return { ok: false, rejected: true, error: "unhandled" };
 }

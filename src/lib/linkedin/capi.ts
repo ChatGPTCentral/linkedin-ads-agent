@@ -23,7 +23,7 @@ export function getCapiEnv(): CapiEnv | null {
 }
 
 /** LinkedIn requires SHA-256 of the trimmed, lowercased email — never the raw address. */
-function sha256Email(email: string): string {
+export function sha256Email(email: string): string {
   return crypto.createHash("sha256").update(email.trim().toLowerCase()).digest("hex");
 }
 
