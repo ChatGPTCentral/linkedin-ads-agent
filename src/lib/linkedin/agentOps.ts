@@ -206,22 +206,31 @@ async function uploadAudience(a: Action, accountId: string, token: string): Prom
   steps.push({ step: "createSegment", ok: segRes.ok && !!segmentId, segmentId, status: segRes.status, error: segRes.ok ? undefined : (await segRes.text()).slice(0, 300) });
   if (!segmentId) return { ok: false, error: "create_segment_failed", steps };
 
-  // B) LinkedIn requires a short wait before the segment accepts users
-  await new Promise((r) => setTimeout(r, 5000));
-
-  // C) stream every email, hashed, in one BATCH_CREATE call
+  // B) LinkedIn requires a short wait before the segment accepts users. In
+  // practice propagation can occasionally exceed the documented 5s, so retry
+  // once with a longer wait if the first attempt reports "not found".
   const elements = emails.map((email) => ({ action: "ADD", userIds: [{ idType: "SHA256_EMAIL", idValue: sha256Email(email) }] }));
-  const usersRes = await fetch(`${LINKEDIN.apiBase}/dmpSegments/${segmentId}/users`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-      "LinkedIn-Version": LINKEDIN.version,
-      "X-Restli-Protocol-Version": "2.0.0",
-      "X-RestLi-Method": "BATCH_CREATE",
-    },
-    body: JSON.stringify({ elements }),
-  });
+  const streamUsers = () =>
+    fetch(`${LINKEDIN.apiBase}/dmpSegments/${segmentId}/users`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+        "LinkedIn-Version": LINKEDIN.version,
+        "X-Restli-Protocol-Version": "2.0.0",
+        "X-RestLi-Method": "BATCH_CREATE",
+      },
+      body: JSON.stringify({ elements }),
+    });
+
+  await new Promise((r) => setTimeout(r, 5000));
+  let usersRes = await streamUsers();
+  if (usersRes.status === 404) {
+    steps.push({ step: "streamUsers", ok: false, status: 404, note: "segment not yet propagated — retrying after a longer wait" });
+    await new Promise((r) => setTimeout(r, 15000));
+    usersRes = await streamUsers();
+  }
+
   const usersOk = usersRes.ok;
   steps.push({ step: "streamUsers", ok: usersOk, status: usersRes.status, sent: elements.length, error: usersOk ? undefined : (await usersRes.text()).slice(0, 400) });
   if (!usersOk) return { ok: false, error: "stream_users_failed", steps, segmentId };
