@@ -3,7 +3,13 @@ import { liGet, liPost, liPatch } from "./client";
 import { DEFAULT_AD_ACCOUNT_URN, LINKEDIN } from "./config";
 import { computeMetrics } from "./metrics";
 import { sha256Email } from "./capi";
+import { GEO_URN } from "./targeting";
 import { getQuizDb } from "@/lib/quiz/db";
+
+// Same core geography used across the app's cold/warm audiences (src/data/linkedin.ts
+// GEO_GROUPS.tier1English) — kept as the default predictive-audience geo filter so
+// lookalikes stay in the countries that actually convert.
+const TIER1_ENGLISH = ["United States", "United Kingdom", "Canada", "Australia", "Ireland", "New Zealand"];
 
 // Shared autonomous-ops logic, reused by /api/agent/report, /api/agent/execute
 // and the /api/agent/tick cron. Everything here runs with the SERVER token
@@ -84,6 +90,7 @@ const ALLOWED = new Set([
   "set_campaign_budget",
   "upload_creative",
   "upload_audience",
+  "create_predictive_audience",
 ]);
 const MAX_DAILY_BUDGET_USD = 50; // hard guardrail
 const BASE_URL = process.env.PUBLIC_BASE_URL || "https://linkedin-ads-agent.vercel.app";
@@ -97,6 +104,7 @@ type ApplyResult = {
   steps?: unknown[];
   creativeUrn?: string | null;
   segmentId?: number | null;
+  predictiveAudienceId?: number | null;
 };
 
 // Full single-image Sponsored Content upload: image asset -> dark post -> creative
@@ -238,6 +246,63 @@ async function uploadAudience(a: Action, accountId: string, token: string): Prom
   return { ok: true, steps, segmentId };
 }
 
+// Predictive Audience (LinkedIn's lookalike). Two-step, because a Predictive
+// Audience must live under its OWN parent DMP segment — one whose
+// sourcePlatform is specifically LINKEDIN_BUSINESS_OBJECTIVE_BASED_AUDIENCES
+// (a plain contact-list segment like our "buyers" one can't host it directly).
+// That parent segment is then given a "seed" pointing at our real buyers
+// segment (urn:li:dmpSegment:<seedSegmentId>) and LinkedIn's model finds
+// similar members. A geo filter is mandatory — defaults to the same
+// tier1English countries used across the app's cold/warm audiences.
+async function createPredictiveAudience(a: Action, accountId: string, token: string): Promise<ApplyResult> {
+  const steps: Record<string, unknown>[] = [];
+  const p = a.params ?? {};
+  const seedSegmentId = Number(p.seedSegmentId);
+  const name = String(p.name ?? "Predictive Audience — Buyers lookalike");
+  const locations: string[] = Array.isArray(p.locations) && p.locations.length ? (p.locations as string[]) : TIER1_ENGLISH;
+  const account = `urn:li:sponsoredAccount:${accountId}`;
+  if (!seedSegmentId) return { ok: false, rejected: true, error: "missing_seedSegmentId", steps };
+
+  const geoUrns = locations.map((l) => GEO_URN[l]).filter(Boolean);
+  if (!geoUrns.length) return { ok: false, rejected: true, error: "no_resolvable_locations", steps };
+
+  // A) create the parent container segment
+  const parentRes = await liPost(
+    "/dmpSegments",
+    { name, account, type: "USER", sourcePlatform: "LINKEDIN_BUSINESS_OBJECTIVE_BASED_AUDIENCES", destinations: [{ destination: "LINKEDIN" }] },
+    token
+  );
+  const parentIdRaw = parentRes.headers.get("x-restli-id") || parentRes.headers.get("x-linkedin-id");
+  const parentSegmentId = parentIdRaw ? Number(parentIdRaw) : null;
+  steps.push({ step: "createParentSegment", ok: parentRes.ok && !!parentSegmentId, parentSegmentId, status: parentRes.status, error: parentRes.ok ? undefined : (await parentRes.text()).slice(0, 300) });
+  if (!parentSegmentId) return { ok: false, error: "create_parent_segment_failed", steps };
+
+  // B) same propagation lag as regular segments — wait, retry once on 404
+  const createBOBA = () =>
+    liPost(
+      `/dmpSegments/${parentSegmentId}/businessObjectiveBasedAudiences`,
+      {
+        targetingFilter: { include: { and: [{ or: { "urn:li:adTargetingFacet:locations": geoUrns } }] } },
+        seeds: [`urn:li:dmpSegment:${seedSegmentId}`],
+      },
+      token
+    );
+
+  await new Promise((r) => setTimeout(r, 5000));
+  let paRes = await createBOBA();
+  if (paRes.status === 404) {
+    steps.push({ step: "createPredictiveAudience", ok: false, status: 404, note: "parent segment not yet propagated — retrying after a longer wait" });
+    await new Promise((r) => setTimeout(r, 15000));
+    paRes = await createBOBA();
+  }
+  const paIdRaw = paRes.headers.get("x-restli-id") || paRes.headers.get("x-linkedin-id");
+  const predictiveAudienceId = paIdRaw ? Number(paIdRaw) : null;
+  steps.push({ step: "createPredictiveAudience", ok: paRes.ok && !!predictiveAudienceId, predictiveAudienceId, status: paRes.status, error: paRes.ok ? undefined : (await paRes.text()).slice(0, 300) });
+  if (!predictiveAudienceId) return { ok: false, error: "create_predictive_audience_failed", steps, segmentId: parentSegmentId };
+
+  return { ok: true, steps, segmentId: parentSegmentId, predictiveAudienceId };
+}
+
 async function applyAction(a: Action, accountId: string, token: string): Promise<ApplyResult> {
   if (!ALLOWED.has(a.kind)) return { ok: false, rejected: true, error: "kind_not_allowed" };
 
@@ -266,6 +331,9 @@ async function applyAction(a: Action, accountId: string, token: string): Promise
   }
   if (a.kind === "upload_audience") {
     return uploadAudience(a, accountId, token);
+  }
+  if (a.kind === "create_predictive_audience") {
+    return createPredictiveAudience(a, accountId, token);
   }
   return { ok: false, rejected: true, error: "unhandled" };
 }
