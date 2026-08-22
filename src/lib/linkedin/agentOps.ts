@@ -81,6 +81,29 @@ export async function takeSnapshot(days = 30) {
   return { ok: true as const, stored, ...payload };
 }
 
+/** Read-only: current processing status of one or more DMP segments (Matched
+ * Audiences / Predictive Audience parents). Takes up to 48h to reach READY —
+ * this lets the operator check without guessing. No queue, no writes. */
+export async function checkAudienceStatus(segmentIds: number[]) {
+  const t = await getAgentToken();
+  if ("error" in t) return { ok: false as const, error: t.error };
+  if (!segmentIds.length) return { ok: false as const, error: "no_segment_ids" };
+  const res = await liGet(`/dmpSegments?ids=List(${segmentIds.join(",")})`, t.accessToken);
+  if (!res.ok) return { ok: false as const, error: (await res.text()).slice(0, 300) };
+  const raw = (await res.json()) as {
+    results?: Record<string, { name?: string; destinations?: { status?: string; audienceSize?: number; matchedCount?: number; destinationSegmentId?: string }[] }>;
+  };
+  const segments = Object.entries(raw.results ?? {}).map(([id, r]) => ({
+    id: Number(id),
+    name: r.name ?? null,
+    status: r.destinations?.[0]?.status ?? null,
+    audienceSize: r.destinations?.[0]?.audienceSize ?? null,
+    matchedCount: r.destinations?.[0]?.matchedCount ?? null,
+    adSegmentUrn: r.destinations?.[0]?.destinationSegmentId ?? null,
+  }));
+  return { ok: true as const, segments };
+}
+
 // ---- Action queue ----
 const ALLOWED = new Set([
   "pause_creative",
