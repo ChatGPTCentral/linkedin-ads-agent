@@ -1,9 +1,10 @@
 import { getAgentToken } from "./serverToken";
-import { liGet, liPost, liPatch } from "./client";
+import { liGet, liPost, liPut, liPatch } from "./client";
 import { DEFAULT_AD_ACCOUNT_URN, LINKEDIN } from "./config";
 import { computeMetrics } from "./metrics";
 import { sha256Email } from "./capi";
-import { GEO_URN } from "./targeting";
+import { GEO_URN, resolveAudienceFacets, resolveExcludedLocations, buildTargetingCriteria } from "./targeting";
+import { AUDIENCES } from "@/data/linkedin";
 import { getQuizDb } from "@/lib/quiz/db";
 
 // Same core geography used across the app's cold/warm audiences (src/data/linkedin.ts
@@ -114,6 +115,7 @@ const ALLOWED = new Set([
   "upload_creative",
   "upload_audience",
   "create_predictive_audience",
+  "create_campaign",
 ]);
 const MAX_DAILY_BUDGET_USD = 50; // hard guardrail
 const BASE_URL = process.env.PUBLIC_BASE_URL || "https://linkedin-ads-agent.vercel.app";
@@ -128,6 +130,7 @@ type ApplyResult = {
   creativeUrn?: string | null;
   segmentId?: number | null;
   predictiveAudienceId?: number | null;
+  campaignUrn?: string | null;
 };
 
 // Full single-image Sponsored Content upload: image asset -> dark post -> creative
@@ -326,6 +329,79 @@ async function createPredictiveAudience(a: Action, accountId: string, token: str
   return { ok: true, steps, segmentId: parentSegmentId, predictiveAudienceId };
 }
 
+// Full campaign creation with the SERVER token — mirrors the browser-token
+// route (/api/linkedin/campaigns POST) exactly (same group->campaign->
+// conversion-association flow), so the operator no longer has to click
+// "Create" in the browser for every new campaign. ALWAYS creates PAUSED —
+// nothing spends until the operator explicitly resumes it (a separate,
+// deliberate action).
+async function createCampaign(a: Action, accountId: string, token: string): Promise<ApplyResult> {
+  const steps: Record<string, unknown>[] = [];
+  const p = a.params ?? {};
+  const audienceId = String(p.audienceId ?? "");
+  const audience = AUDIENCES.find((x) => x.id === audienceId);
+  if (!audience) return { ok: false, rejected: true, error: "unknown_audience", steps };
+
+  const account = `urn:li:sponsoredAccount:${accountId}`;
+  const name = String(p.name ?? `[Agent] ${audience.name}`);
+  const dailyBudgetUsd = Math.max(Number(p.dailyBudgetUsd) || 25, 10);
+  if (dailyBudgetUsd > MAX_DAILY_BUDGET_USD) return { ok: false, rejected: true, error: `over_cap_${MAX_DAILY_BUDGET_USD}`, steps };
+  const objectiveType = p.objective === "WEBSITE_VISIT" ? "WEBSITE_VISIT" : "WEBSITE_CONVERSION";
+  const conversionUrn = p.conversionUrn ? String(p.conversionUrn) : undefined;
+  const conversionUrns = Array.isArray(p.conversionUrns) ? (p.conversionUrns as string[]) : [];
+  const includeSegments = Array.isArray(p.includeSegments) ? (p.includeSegments as string[]) : undefined;
+  const excludeSegments = Array.isArray(p.excludeSegments) ? (p.excludeSegments as string[]) : undefined;
+
+  const startAt = Date.now() + 10 * 60 * 1000;
+
+  // 1) Campaign group (ACTIVE container; the campaign inside stays PAUSED).
+  const cgRes = await liPost(`/adAccounts/${accountId}/adCampaignGroups`, { account, name, status: "ACTIVE", runSchedule: { start: startAt } }, token);
+  const campaignGroupId = cgRes.headers.get("x-restli-id") || cgRes.headers.get("x-linkedin-id");
+  const campaignGroupUrn = campaignGroupId ? `urn:li:sponsoredCampaignGroup:${campaignGroupId}` : null;
+  steps.push({ step: "createCampaignGroup", ok: cgRes.ok && !!campaignGroupUrn, campaignGroupUrn, status: cgRes.status, error: cgRes.ok ? undefined : (await cgRes.text()).slice(0, 300) });
+  if (!campaignGroupUrn) return { ok: false, error: "create_group_failed", steps };
+
+  // 2) Targeting
+  const include = await resolveAudienceFacets(audience, token);
+  const exclude = await resolveExcludedLocations(audience, token);
+  const targetingCriteria = buildTargetingCriteria(include, exclude, { includeSegments, excludeSegments });
+
+  // 3) Campaign — always PAUSED
+  const campaign: Record<string, unknown> = {
+    account,
+    campaignGroup: campaignGroupUrn,
+    name,
+    type: "SPONSORED_UPDATES",
+    costType: "CPM",
+    dailyBudget: { amount: String(dailyBudgetUsd), currencyCode: "USD" },
+    unitCost: { amount: "10", currencyCode: "USD" },
+    locale: { country: "US", language: "en" },
+    runSchedule: { start: startAt },
+    targetingCriteria,
+    objectiveType,
+    offsiteDeliveryEnabled: false,
+    politicalIntent: "NOT_POLITICAL",
+    status: "PAUSED",
+  };
+  if (objectiveType === "WEBSITE_CONVERSION") campaign.optimizationTargetType = String(p.optimizationTargetType ?? "MAX_CONVERSION");
+
+  const cRes = await liPost(`/adAccounts/${accountId}/adCampaigns`, campaign, token);
+  const campaignId = cRes.headers.get("x-restli-id") || cRes.headers.get("x-linkedin-id");
+  const campaignUrn = campaignId ? `urn:li:sponsoredCampaign:${campaignId}` : null;
+  steps.push({ step: "createCampaign", ok: cRes.ok && !!campaignUrn, campaignUrn, status: cRes.status, error: cRes.ok ? undefined : (await cRes.text()).slice(0, 300), targetingCriteria });
+  if (!campaignUrn) return { ok: false, error: "create_campaign_failed", steps };
+
+  // 4) Attach conversions (optimize target first, rest tracked)
+  const allConversions = Array.from(new Set([conversionUrn, ...conversionUrns].filter(Boolean))) as string[];
+  for (const conv of allConversions) {
+    const key = `(campaign:${encodeURIComponent(campaignUrn)},conversion:${encodeURIComponent(conv)})`;
+    const aRes = await liPut(`/campaignConversions/${key}`, {}, token);
+    steps.push({ step: "attachConversion", conversion: conv, ok: aRes.ok, status: aRes.status, error: aRes.ok ? undefined : (await aRes.text()).slice(0, 200) });
+  }
+
+  return { ok: true, steps, campaignUrn };
+}
+
 async function applyAction(a: Action, accountId: string, token: string): Promise<ApplyResult> {
   if (!ALLOWED.has(a.kind)) return { ok: false, rejected: true, error: "kind_not_allowed" };
 
@@ -357,6 +433,9 @@ async function applyAction(a: Action, accountId: string, token: string): Promise
   }
   if (a.kind === "create_predictive_audience") {
     return createPredictiveAudience(a, accountId, token);
+  }
+  if (a.kind === "create_campaign") {
+    return createCampaign(a, accountId, token);
   }
   return { ok: false, rejected: true, error: "unhandled" };
 }
