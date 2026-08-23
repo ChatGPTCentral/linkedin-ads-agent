@@ -359,13 +359,26 @@ async function createPredictiveAudience(a: Action, accountId: string, token: str
 // createCampaign's step 4 and the standalone attach_conversion action (used
 // to repair a campaign created before a conversion association failed, or to
 // add tracking-only conversions after the fact).
+//
+// A campaign attached immediately after creation can 404 ("Requester does not
+// have permission to UPDATE the resource") purely from propagation lag — the
+// same class of issue as the DMP segment 5s wait elsewhere in this file, not
+// a real permission gap (confirmed: retrying the identical call moments later
+// succeeds). Retry once with a short wait on 404 before giving up.
 async function attachConversionsToCampaign(campaignUrn: string, conversions: string[], token: string): Promise<Record<string, unknown>[]> {
   const steps: Record<string, unknown>[] = [];
   for (const conv of conversions) {
     const conversionUrnNormalized = normalizeConversionUrn(conv);
     const key = `(campaign:${encodeURIComponent(campaignUrn)},conversion:${encodeURIComponent(conversionUrnNormalized)})`;
-    const aRes = await liPut(`/campaignConversions/${key}`, { campaign: campaignUrn, conversion: conversionUrnNormalized }, token);
-    steps.push({ step: "attachConversion", conversion: conversionUrnNormalized, ok: aRes.ok, status: aRes.status, error: aRes.ok ? undefined : (await aRes.text()).slice(0, 200) });
+    const body = { campaign: campaignUrn, conversion: conversionUrnNormalized };
+    let aRes = await liPut(`/campaignConversions/${key}`, body, token);
+    let retried = false;
+    if (!aRes.ok && aRes.status === 404) {
+      await new Promise((r) => setTimeout(r, 8000));
+      aRes = await liPut(`/campaignConversions/${key}`, body, token);
+      retried = true;
+    }
+    steps.push({ step: "attachConversion", conversion: conversionUrnNormalized, ok: aRes.ok, status: aRes.status, retried, error: aRes.ok ? undefined : (await aRes.text()).slice(0, 200) });
   }
   return steps;
 }
