@@ -2,7 +2,7 @@ import { getAgentToken } from "./serverToken";
 import { liGet, liPost, liPut, liPatch } from "./client";
 import { DEFAULT_AD_ACCOUNT_URN, LINKEDIN } from "./config";
 import { computeMetrics, type CampaignMetric } from "./metrics";
-import { sha256Email } from "./capi";
+import { sha256Email, normalizeConversionUrn } from "./capi";
 import { GEO_URN, resolveAudienceFacets, resolveExcludedLocations, buildTargetingCriteria } from "./targeting";
 import { AUDIENCES } from "@/data/linkedin";
 import { getQuizDb } from "@/lib/quiz/db";
@@ -116,6 +116,7 @@ const ALLOWED = new Set([
   "upload_audience",
   "create_predictive_audience",
   "create_campaign",
+  "attach_conversion",
 ]);
 const MAX_DAILY_BUDGET_USD = 50; // hard guardrail, per campaign
 // Hard guardrail across the WHOLE ad account: sum of every ACTIVE campaign's
@@ -348,6 +349,39 @@ async function createPredictiveAudience(a: Action, accountId: string, token: str
   return { ok: true, steps, segmentId: parentSegmentId, predictiveAudienceId };
 }
 
+// Attach one or more conversions to an existing campaign. campaignConversions
+// keys conversions under the urn:lla:llaPartnerConversion namespace — not
+// urn:li:conversion, which 400s here ("Compound key parameter value ... is
+// invalid") even though it's the id format Campaign Manager displays.
+// normalizeConversionUrn (capi.ts) converts either form to the right one. The
+// PUT body must also explicitly repeat both URNs — LinkedIn rejects an empty
+// body even though the pair is already in the URL's compound key. Shared by
+// createCampaign's step 4 and the standalone attach_conversion action (used
+// to repair a campaign created before a conversion association failed, or to
+// add tracking-only conversions after the fact).
+async function attachConversionsToCampaign(campaignUrn: string, conversions: string[], token: string): Promise<Record<string, unknown>[]> {
+  const steps: Record<string, unknown>[] = [];
+  for (const conv of conversions) {
+    const conversionUrnNormalized = normalizeConversionUrn(conv);
+    const key = `(campaign:${encodeURIComponent(campaignUrn)},conversion:${encodeURIComponent(conversionUrnNormalized)})`;
+    const aRes = await liPut(`/campaignConversions/${key}`, { campaign: campaignUrn, conversion: conversionUrnNormalized }, token);
+    steps.push({ step: "attachConversion", conversion: conversionUrnNormalized, ok: aRes.ok, status: aRes.status, error: aRes.ok ? undefined : (await aRes.text()).slice(0, 200) });
+  }
+  return steps;
+}
+
+async function attachConversion(a: Action, token: string): Promise<ApplyResult> {
+  const campaignUrn = a.target_id.startsWith("urn:") ? a.target_id : `urn:li:sponsoredCampaign:${a.target_id}`;
+  const p = a.params ?? {};
+  const conversionUrn = p.conversionUrn ? String(p.conversionUrn) : undefined;
+  const conversionUrns = Array.isArray(p.conversionUrns) ? (p.conversionUrns as string[]) : [];
+  const allConversions = Array.from(new Set([conversionUrn, ...conversionUrns].filter(Boolean))) as string[];
+  if (!allConversions.length) return { ok: false, rejected: true, error: "missing_conversionUrn", steps: [] };
+  const steps = await attachConversionsToCampaign(campaignUrn, allConversions, token);
+  const allOk = steps.every((s) => Boolean((s as { ok?: boolean }).ok));
+  return { ok: allOk, steps, error: allOk ? undefined : "one_or_more_associations_failed" };
+}
+
 // Full campaign creation with the SERVER token — mirrors the browser-token
 // route (/api/linkedin/campaigns POST) exactly (same group->campaign->
 // conversion-association flow), so the operator no longer has to click
@@ -417,13 +451,9 @@ async function createCampaign(a: Action, accountId: string, token: string): Prom
   steps.push({ step: "createCampaign", ok: cRes.ok && !!campaignUrn, campaignUrn, status: cRes.status, error: cRes.ok ? undefined : (await cRes.text()).slice(0, 300), targetingCriteria });
   if (!campaignUrn) return { ok: false, error: "create_campaign_failed", steps };
 
-  // 4) Attach conversions (optimize target first, rest tracked)
+  // 4) Attach conversions (optimize target first, rest tracked).
   const allConversions = Array.from(new Set([conversionUrn, ...conversionUrns].filter(Boolean))) as string[];
-  for (const conv of allConversions) {
-    const key = `(campaign:${encodeURIComponent(campaignUrn)},conversion:${encodeURIComponent(conv)})`;
-    const aRes = await liPut(`/campaignConversions/${key}`, {}, token);
-    steps.push({ step: "attachConversion", conversion: conv, ok: aRes.ok, status: aRes.status, error: aRes.ok ? undefined : (await aRes.text()).slice(0, 200) });
-  }
+  steps.push(...(await attachConversionsToCampaign(campaignUrn, allConversions, token)));
 
   return { ok: true, steps, campaignUrn };
 }
@@ -466,6 +496,9 @@ async function applyAction(a: Action, accountId: string, token: string): Promise
   }
   if (a.kind === "create_campaign") {
     return createCampaign(a, accountId, token);
+  }
+  if (a.kind === "attach_conversion") {
+    return attachConversion(a, token);
   }
   return { ok: false, rejected: true, error: "unhandled" };
 }

@@ -3,6 +3,7 @@ import { getValidToken, liGet, liPost, liPut, liPatch } from "@/lib/linkedin/cli
 import { DEFAULT_AD_ACCOUNT_URN } from "@/lib/linkedin/config";
 import { AUDIENCES, AD_COPY } from "@/data/linkedin";
 import { resolveAudienceFacets, resolveExcludedLocations, buildTargetingCriteria } from "@/lib/linkedin/targeting";
+import { normalizeConversionUrn } from "@/lib/linkedin/capi";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -197,14 +198,21 @@ export async function POST(req: NextRequest) {
   //    optimization signal (e.g. Quiz Completed); the rest are attached for
   //    tracking + learning (e.g. Purchase — Stripe/CAPI) so LinkedIn can shift
   //    toward real buyers as purchases start firing.
+  // campaignConversions keys conversions under urn:lla:llaPartnerConversion (not
+  // urn:li:conversion, which 400s as an invalid compound key value even though
+  // it's the id format Campaign Manager displays) and rejects an empty PUT body
+  // — both URNs must be repeated in it even though they're already in the path.
   const allConversions = Array.from(new Set([conversionUrn, ...(conversionUrns ?? [])].filter(Boolean))) as string[];
   const conversionAssociations: { conversion: string; ok: boolean; status?: number; error?: string }[] = [];
   if (campaignUrn) {
     for (const conv of allConversions) {
-      const key = `(campaign:${encodeURIComponent(campaignUrn)},conversion:${encodeURIComponent(conv)})`;
-      const aRes = await liPut(`/campaignConversions/${key}`, {}, t.accessToken);
+      const conversionUrnNormalized = normalizeConversionUrn(conv);
+      const key = `(campaign:${encodeURIComponent(campaignUrn)},conversion:${encodeURIComponent(conversionUrnNormalized)})`;
+      const aRes = await liPut(`/campaignConversions/${key}`, { campaign: campaignUrn, conversion: conversionUrnNormalized }, t.accessToken);
       conversionAssociations.push(
-        aRes.ok ? { conversion: conv, ok: true } : { conversion: conv, ok: false, status: aRes.status, error: (await aRes.text()).slice(0, 300) }
+        aRes.ok
+          ? { conversion: conversionUrnNormalized, ok: true }
+          : { conversion: conversionUrnNormalized, ok: false, status: aRes.status, error: (await aRes.text()).slice(0, 300) }
       );
     }
   }
