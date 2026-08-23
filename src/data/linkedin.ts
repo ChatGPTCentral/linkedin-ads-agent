@@ -113,6 +113,32 @@ export const AUDIENCES: LinkedInAudience[] = [
     ],
   },
   {
+    id: "buyerFit",
+    name: "Buyer-Fit — Founders, C-Suite & Decision-Makers",
+    intent:
+      "Narrowed to the seniorities that actually pay (Owner/Founder, C-Suite, VP, Director) — derived from cross-referencing every paid customer (quiz DB + beehiiv + trial-cohort sample) against job level. Managers and generic ICs drive lead volume but convert to purchase far less often; this audience trades reach for buyer fit, built for direct-sale (not top-of-funnel) offers.",
+    locations: [...GEO_GROUPS.tier1English],
+    excludeLocations: [...GEO_GROUPS.lowLtvExclude],
+    facets: {
+      jobSeniorities: ["Owner", "CXO", "VP", "Director"],
+      jobFunctions: ["Entrepreneurship", "Marketing", "Information Technology", "Engineering", "Consulting"],
+      memberSkills: ["Artificial Intelligence", "Generative AI", "Prompt Engineering", "ChatGPT"],
+    },
+    audienceExpansion: false,
+    estimatedSizeNote:
+      "Narrower than Core ICP by design (drops Manager/Senior/IC). If delivery struggles below LinkedIn's reach minimum, broaden by adding Manager back before touching geography.",
+    budgetGuidance: "Direct-sale / bottom-of-funnel campaigns only — not for broad lead generation.",
+    warnings: [
+      "Exclude India & Brazil (lowest-LTV markets, confirmed across 3 independent data sources this session).",
+      "Narrow audience — monitor reach; LinkedIn needs enough people in the pool to deliver efficiently.",
+    ],
+    derivedFrom: [
+      "Buyer job-level analysis (quiz DB, all-time): Founder/decision_maker skew highest purchase rate",
+      "Trial-cohort spreadsheet (128 users, 64 paid/64 not): every non-empty seniority bucket among payers was Owner/Director/CXO/Senior — zero among non-payers",
+      "li_ads-specific buyers: Founder 3.0% conv, VP/Director 3.3% conv vs Manager 0% (85 leads, 0 buyers)",
+    ],
+  },
+  {
     id: "highltv",
     name: "High-LTV — Founders & Execs (Premium Markets)",
     intent:
