@@ -1,7 +1,7 @@
 import { getAgentToken } from "./serverToken";
 import { liGet, liPost, liPut, liPatch } from "./client";
 import { DEFAULT_AD_ACCOUNT_URN, LINKEDIN } from "./config";
-import { computeMetrics } from "./metrics";
+import { computeMetrics, type CampaignMetric } from "./metrics";
 import { sha256Email } from "./capi";
 import { GEO_URN, resolveAudienceFacets, resolveExcludedLocations, buildTargetingCriteria } from "./targeting";
 import { AUDIENCES } from "@/data/linkedin";
@@ -117,7 +117,14 @@ const ALLOWED = new Set([
   "create_predictive_audience",
   "create_campaign",
 ]);
-const MAX_DAILY_BUDGET_USD = 50; // hard guardrail
+const MAX_DAILY_BUDGET_USD = 50; // hard guardrail, per campaign
+// Hard guardrail across the WHOLE ad account: sum of every ACTIVE campaign's
+// dailyBudget can never exceed this. This is the fixed cap the operator asked
+// for after rejecting a variable cost-cap bid strategy — it bounds total
+// possible daily spend regardless of how many campaigns exist or what any
+// single one is set to. Covers the Sept plan (trial $12/day + quiz $22/day =
+// $34/day, ~$1000/month) with headroom, not room for a surprise third campaign.
+const MAX_TOTAL_DAILY_BUDGET_USD = 40;
 const BASE_URL = process.env.PUBLIC_BASE_URL || "https://linkedin-ads-agent.vercel.app";
 
 type Action = { id: number; kind: string; target_id: string; params: Record<string, unknown> | null };
@@ -132,6 +139,18 @@ type ApplyResult = {
   predictiveAudienceId?: number | null;
   campaignUrn?: string | null;
 };
+
+// Sum of dailyBudget across every currently-ACTIVE campaign on the account,
+// excluding one campaign id (used when re-budgeting an existing campaign so
+// it isn't double-counted against itself). Backs MAX_TOTAL_DAILY_BUDGET_USD.
+async function activeDailyBudgetTotal(accountId: string, token: string, excludeCampaignId?: string): Promise<number> {
+  const res = await liGet(`/adAccounts/${accountId}/adCampaigns?q=search&search=(status:(values:List(ACTIVE)))&count=100`, token);
+  if (!res.ok) return Infinity; // fail closed: if we can't verify, refuse to add more spend
+  const j = (await res.json().catch(() => ({}))) as { elements?: { id?: number | string; dailyBudget?: { amount?: string } }[] };
+  return (j.elements ?? [])
+    .filter((c) => String(c.id) !== excludeCampaignId)
+    .reduce((sum, c) => sum + (Number(c.dailyBudget?.amount) || 0), 0);
+}
 
 // Full single-image Sponsored Content upload: image asset -> dark post -> creative
 // linked to the campaign (PAUSED). Returns per-step results so one test pinpoints
@@ -346,6 +365,13 @@ async function createCampaign(a: Action, accountId: string, token: string): Prom
   const name = String(p.name ?? `[Agent] ${audience.name}`);
   const dailyBudgetUsd = Math.max(Number(p.dailyBudgetUsd) || 25, 10);
   if (dailyBudgetUsd > MAX_DAILY_BUDGET_USD) return { ok: false, rejected: true, error: `over_cap_${MAX_DAILY_BUDGET_USD}`, steps };
+  // Campaigns are created PAUSED (below), but check the account-wide cap now
+  // against what WOULD be active once this one is turned on, so the operator
+  // never has to remember to check before resuming it.
+  const currentTotal = await activeDailyBudgetTotal(accountId, token);
+  if (currentTotal + dailyBudgetUsd > MAX_TOTAL_DAILY_BUDGET_USD) {
+    return { ok: false, rejected: true, error: `over_account_cap_${MAX_TOTAL_DAILY_BUDGET_USD}_current_${currentTotal}`, steps };
+  }
   const objectiveType = p.objective === "WEBSITE_VISIT" ? "WEBSITE_VISIT" : "WEBSITE_CONVERSION";
   const conversionUrn = p.conversionUrn ? String(p.conversionUrn) : undefined;
   const conversionUrns = Array.isArray(p.conversionUrns) ? (p.conversionUrns as string[]) : [];
@@ -422,6 +448,10 @@ async function applyAction(a: Action, accountId: string, token: string): Promise
     if (!(amount > 0)) return { ok: false, rejected: true, error: "bad_amount" };
     if (amount > MAX_DAILY_BUDGET_USD) return { ok: false, rejected: true, error: `over_cap_${MAX_DAILY_BUDGET_USD}` };
     const id = a.target_id.split(":").pop();
+    const currentTotal = await activeDailyBudgetTotal(accountId, token, id);
+    if (currentTotal + amount > MAX_TOTAL_DAILY_BUDGET_USD) {
+      return { ok: false, rejected: true, error: `over_account_cap_${MAX_TOTAL_DAILY_BUDGET_USD}_current_${currentTotal}` };
+    }
     const res = await liPatch(`/adAccounts/${accountId}/adCampaigns/${id}`, { dailyBudget: { amount: String(amount), currencyCode: "USD" } }, token);
     return res.ok ? { ok: true, status: res.status } : { ok: false, status: res.status, error: (await res.text()).slice(0, 300) };
   }
@@ -463,4 +493,100 @@ export async function processActionQueue() {
     results.push({ id: a.id, kind: a.kind, target: a.target_id, outcome, ...r });
   }
   return { ok: true as const, processed: results.length, results };
+}
+
+// ---- Self-learning pass ----
+const OPTIMIZATION_WINDOW_DAYS = 3;
+const OPTIMIZATION_CPA_MULTIPLIER = 2; // auto-pause once trailing CPA passes this many times the target
+
+/**
+ * The continuous-optimization half of the agent, run every hour by the cron
+ * tick alongside the action queue. Reads per-campaign CPA targets from
+ * public.ops_campaign_target, compares each ACTIVE campaign's trailing
+ * 3-day cost-per-conversion (real CAPI conversions, not clicks) against its
+ * target, and — only when spend has crossed the campaign's min_spend_usd
+ * floor, so one unlucky day of clicks can't trigger it — queues a
+ * pause_campaign action for anything running at more than 2x its target.
+ * The queued action is executed by the SAME tick's processActionQueue() call
+ * (see /api/agent/tick), so a bad campaign is paused within the hour it
+ * crosses the line, not the next time someone happens to check.
+ *
+ * Every campaign with a target gets a logged decision every pass — paused,
+ * left alone (on target / not enough spend yet / not active) — in
+ * public.ops_optimization_log, so "what did the agent decide and why" is a
+ * queryable history, not something the operator has to take on faith.
+ *
+ * Deliberately one-directional: this never resumes a paused campaign, never
+ * raises a budget, and never creates a campaign. Auto-pause is the only
+ * autonomous lever because it can only ever reduce spend — unlike an
+ * auto-increase, it can't compound into a surprise bill. Turning a campaign
+ * back on, raising its budget, or launching a new one always goes through
+ * an explicit queued ops_action the operator reviews.
+ */
+export async function runOptimizationPass() {
+  const t = await getAgentToken();
+  if ("error" in t) return { ok: false as const, error: t.error };
+  const db = getQuizDb();
+  if (!db) return { ok: false as const, error: "no_db (set SUPABASE_DATABASE_URL)" };
+
+  const targets = (await db`select campaign_urn, label, target_cpa_usd, min_spend_usd from public.ops_campaign_target where enabled = true`) as unknown as {
+    campaign_urn: string;
+    label: string | null;
+    target_cpa_usd: string | number;
+    min_spend_usd: string | number;
+  }[];
+  if (!targets.length) return { ok: true as const, checked: 0, decisions: [] };
+
+  const account = DEFAULT_AD_ACCOUNT_URN;
+  const accountId = account.split(":").pop() as string;
+
+  const statusRes = await liGet(`/adAccounts/${accountId}/adCampaigns?q=search&count=100`, t.accessToken);
+  const statusJson = statusRes.ok
+    ? ((await statusRes.json().catch(() => ({}))) as { elements?: { id?: number | string; status?: string }[] })
+    : { elements: [] as { id?: number | string; status?: string }[] };
+  const statusById = new Map((statusJson.elements ?? []).map((c) => [`urn:li:sponsoredCampaign:${c.id}`, c.status ?? null]));
+
+  const perf = await analytics(account, "CAMPAIGN", OPTIMIZATION_WINDOW_DAYS, t.accessToken);
+  const perfComputed: CampaignMetric[] = "computed" in perf ? (perf.computed as CampaignMetric[]) : [];
+  const byCampaign = new Map<string | null, CampaignMetric>(perfComputed.map((m) => [m.campaign, m]));
+
+  const decisions: Array<{ campaignUrn: string; label: string | null; decision: string; reason: string; metrics: Record<string, unknown> }> = [];
+
+  for (const target of targets) {
+    const status = statusById.get(target.campaign_urn) ?? null;
+    const m = byCampaign.get(target.campaign_urn);
+    const spend = m?.spend ?? 0;
+    const conversions = m?.conversions ?? 0;
+    const cpa = m?.cpa ?? null;
+    const targetCpa = Number(target.target_cpa_usd);
+    const minSpend = Number(target.min_spend_usd);
+    const metrics = { windowDays: OPTIMIZATION_WINDOW_DAYS, spend, conversions, cpa, targetCpa, minSpend, status };
+
+    let decision: string;
+    let reason: string;
+
+    if (status !== "ACTIVE") {
+      decision = "skipped_not_active";
+      reason = `campaign status is ${status ?? "unknown"}, nothing to evaluate`;
+    } else if (spend < minSpend) {
+      decision = "left_alone_below_min_spend";
+      reason = `spent $${spend.toFixed(2)} of the $${minSpend} minimum needed before judging — too early to call`;
+    } else if (cpa !== null && cpa > targetCpa * OPTIMIZATION_CPA_MULTIPLIER) {
+      decision = "paused";
+      reason = `trailing ${OPTIMIZATION_WINDOW_DAYS}d CPA $${cpa.toFixed(2)} is over ${OPTIMIZATION_CPA_MULTIPLIER}x the $${targetCpa} target (${conversions} conversions on $${spend.toFixed(2)} spend)`;
+      await db`insert into public.ops_action (kind, target_id, params, status)
+                values ('pause_campaign', ${target.campaign_urn}, ${JSON.stringify({ reason: `auto: ${reason}`, source: "runOptimizationPass" })}::jsonb, 'pending')`;
+    } else {
+      decision = "left_alone_on_target";
+      reason = cpa === null
+        ? `$${spend.toFixed(2)} spent past the min-spend floor with 0 conversions yet in the window — watching`
+        : `trailing CPA $${cpa.toFixed(2)} is within ${OPTIMIZATION_CPA_MULTIPLIER}x of the $${targetCpa} target`;
+    }
+
+    decisions.push({ campaignUrn: target.campaign_urn, label: target.label, decision, reason, metrics });
+    await db`insert into public.ops_optimization_log (campaign_urn, decision, reason, metrics)
+              values (${target.campaign_urn}, ${decision}, ${reason}, ${JSON.stringify(metrics)}::jsonb)`;
+  }
+
+  return { ok: true as const, checked: targets.length, decisions };
 }
