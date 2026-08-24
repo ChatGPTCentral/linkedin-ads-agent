@@ -105,6 +105,32 @@ export async function checkAudienceStatus(segmentIds: number[]) {
   return { ok: true as const, segments };
 }
 
+/** Read-only: creatives attached to one or more campaigns, with intendedStatus
+ * and review status — lets the operator (or this app) see WHY a campaign
+ * with a healthy budget and targeting isn't delivering (e.g. no creatives at
+ * all, or creatives stuck in DRAFT/pending review). No queue, no writes. */
+export async function checkCampaignCreatives(campaignIds: number[]) {
+  const t = await getAgentToken();
+  if ("error" in t) return { ok: false as const, error: t.error };
+  if (!campaignIds.length) return { ok: false as const, error: "no_campaign_ids" };
+  const accountId = DEFAULT_AD_ACCOUNT_URN.split(":").pop() as string;
+  const campaigns = campaignIds.map((id) => `urn:li:sponsoredCampaign:${id}`);
+  const res = await fetch(
+    `${LINKEDIN.apiBase}/adAccounts/${accountId}/creatives?q=criteria&campaigns=List(${campaigns.map(encodeURIComponent).join(",")})`,
+    { headers: { Authorization: `Bearer ${t.accessToken}`, "LinkedIn-Version": LINKEDIN.version, "X-Restli-Protocol-Version": "2.0.0", "X-RestLi-Method": "FINDER" } }
+  );
+  if (!res.ok) return { ok: false as const, error: (await res.text()).slice(0, 300) };
+  const raw = (await res.json()) as { elements?: { id?: string; campaign?: string; intendedStatus?: string; isServing?: boolean; review?: { status?: string } }[] };
+  const creatives = (raw.elements ?? []).map((c) => ({
+    id: c.id ?? null,
+    campaign: c.campaign ?? null,
+    intendedStatus: c.intendedStatus ?? null,
+    isServing: c.isServing ?? null,
+    reviewStatus: c.review?.status ?? null,
+  }));
+  return { ok: true as const, count: creatives.length, creatives };
+}
+
 // ---- Action queue ----
 const ALLOWED = new Set([
   "pause_creative",
